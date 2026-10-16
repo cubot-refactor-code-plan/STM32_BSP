@@ -1,5 +1,4 @@
 #include "bsp_uart.hpp"
-#include "bsp_cfg.hpp" // 中断回调中直接引用 bsp_usartX / bsp_uartX 全局实例
 #include "FreeRTOS.h"  // IWYU pragma: keep
 #include <stdarg.h>
 #include <stdio.h>
@@ -84,131 +83,126 @@ bool repair_dma_handle(DMA_HandleTypeDef *hdma)
 extern "C"
 {
   /**
-   * @brief IDLE串口回调函数
-   * @note 按句柄分发到对应的全局实例
+   * @brief IDLE / TC 接收事件回调：按句柄查登记表，交给对应实例
+   * @note 没有登记的串口（宿主工程自己管理的）直接忽略。
    */
   void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
   {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-
-    if (huart == &huart1)
+    BaseType_t   xHigherPriorityTaskWoken = pdFALSE;
+    BspUartBase *uart                     = BspUartBase::find(huart);
+    if (uart != nullptr)
     {
-      bsp_uart1.on_idle_isr(Size, &xHigherPriorityTaskWoken);
+      uart->on_idle_isr(Size, &xHigherPriorityTaskWoken);
     }
-    else if (huart == &huart3)
-    {
-      bsp_uart3.on_idle_isr(Size, &xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart4)
-    {
-      bsp_uart4.on_idle_isr(Size, &xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart5)
-    {
-      bsp_uart5.on_idle_isr(Size, &xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart7)
-    {
-      bsp_uart7.on_idle_isr(Size, &xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart8)
-    {
-      bsp_uart8.on_idle_isr(Size, &xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart9)
-    {
-      bsp_uart9.on_idle_isr(Size, &xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart10)
-    {
-      bsp_uart10.on_idle_isr(Size, &xHigherPriorityTaskWoken);
-    }
-
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
 
   /**
-   * @brief UART TX Complete 回调函数
-   * @note 发送完成时触发，从流缓冲区取下一批数据继续发送
+   * @brief TX Complete 回调：从流缓冲区取下一批数据继续发送
+   * @note 只收不发的实例（transmit_enable = false）不会有 TX DMA，也就不会进这里。
    */
   void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
   {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-
-    // 注：UART5 无发送功能（未配 TX DMA），不会触发本回调，故无 huart5 分支
-    if (huart == &huart1)
+    BaseType_t   xHigherPriorityTaskWoken = pdFALSE;
+    BspUartBase *uart                     = BspUartBase::find(huart);
+    if (uart != nullptr)
     {
-      bsp_uart1.start_transmission_from_isr(&xHigherPriorityTaskWoken);
+      uart->start_transmission_from_isr(&xHigherPriorityTaskWoken);
     }
-    else if (huart == &huart3)
-    {
-      bsp_uart3.start_transmission_from_isr(&xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart4)
-    {
-      bsp_uart4.start_transmission_from_isr(&xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart7)
-    {
-      bsp_uart7.start_transmission_from_isr(&xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart8)
-    {
-      bsp_uart8.start_transmission_from_isr(&xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart9)
-    {
-      bsp_uart9.start_transmission_from_isr(&xHigherPriorityTaskWoken);
-    }
-    else if (huart == &huart10)
-    {
-      bsp_uart10.start_transmission_from_isr(&xHigherPriorityTaskWoken);
-    }
-
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
 
   /**
-   * @brief UART 错误回调函数
-   * @note 这里只累加计数，不做恢复；复位与重建由任务侧 rx_recover()/tx_recover() 完成
+   * @brief 错误回调：这里只累加计数，不做恢复
+   * @note 恢复要调阻塞版 HAL 接口，中断里不能做；由库的巡检任务调 rx_recover() / tx_recover() 完成。
    */
   void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
   {
-    // 8 路都要接：这里只累加计数，恢复由任务侧 rx_recover()/tx_recover()完成 ，因为修复这件事会阻塞，中断不能写阻塞
-    if (huart == &huart1)
+    BspUartBase *uart = BspUartBase::find(huart);
+    if (uart != nullptr)
     {
-      bsp_uart1.on_error_isr();
-    }
-    else if (huart == &huart3)
-    {
-      bsp_uart3.on_error_isr();
-    }
-    else if (huart == &huart4)
-    {
-      bsp_uart4.on_error_isr();
-    }
-    else if (huart == &huart5)
-    {
-      bsp_uart5.on_error_isr();
-    }
-    else if (huart == &huart7)
-    {
-      bsp_uart7.on_error_isr();
-    }
-    else if (huart == &huart8)
-    {
-      bsp_uart8.on_error_isr();
-    }
-    else if (huart == &huart9)
-    {
-      bsp_uart9.on_error_isr();
-    }
-    else if (huart == &huart10)
-    {
-      bsp_uart10.on_error_isr();
+      uart->on_error_isr();
     }
   }
 }
+
+
+// ----------------
+
+
+// ---------------- 实例登记表 ----------------
+
+BspUartBase *BspUartBase::_registry[BspUartBase::MAX_INSTANCES] = {};
+uint32_t     BspUartBase::_registry_num                         = 0U;
+
+/** @brief 析构时摘除：后面的实例前移，保持表紧凑 */
+BspUartBase::~BspUartBase()
+{
+  for (uint32_t i = 0U; i < _registry_num; ++i)
+  {
+    if (_registry[i] == this)
+    {
+      for (uint32_t j = i + 1U; j < _registry_num; ++j)
+      {
+        _registry[j - 1U] = _registry[j];
+      }
+      --_registry_num;
+      _registry[_registry_num] = nullptr;
+      break;
+    }
+  }
+}
+
+/** @brief 登记本实例；同一句柄只允许一个实例，重复登记自己无副作用 */
+Status BspUartBase::register_self()
+{
+  if (_huart == nullptr)
+  {
+    return Status::BAD_ARG;
+  }
+  for (uint32_t i = 0U; i < _registry_num; ++i)
+  {
+    if (_registry[i] == this)
+    {
+      return Status::OK; // 重复 init()：已经登记过
+    }
+    if (_registry[i]->_huart == _huart)
+    {
+      return Status::BAD_ARG; // 两个实例绑定同一个串口：回调只会交给其中一个，属于配置错误
+    }
+  }
+  if (_registry_num >= MAX_INSTANCES)
+  {
+    return Status::FULL;
+  }
+  _registry[_registry_num] = this;
+  ++_registry_num;
+  return Status::OK;
+}
+
+uint32_t BspUartBase::instance_count()
+{
+  return _registry_num;
+}
+
+BspUartBase *BspUartBase::instance_at(uint32_t index)
+{
+  return (index < _registry_num) ? _registry[index] : nullptr;
+}
+
+/** @brief 线性查找（最多十几项），ISR 中调用 */
+BspUartBase *BspUartBase::find(const UART_HandleTypeDef *huart)
+{
+  for (uint32_t i = 0U; i < _registry_num; ++i)
+  {
+    if (_registry[i]->_huart == huart)
+    {
+      return _registry[i];
+    }
+  }
+  return nullptr;
+}
+
 
 /**
  * @brief BspUart<BUFFER_SIZE> 成员函数定义
@@ -226,7 +220,7 @@ extern "C"
 
 /** @brief 只做赋值，RTOS 资源与接收启动放在 init() */
 template <size_t BUFFER_SIZE>
-BspUart<BUFFER_SIZE>::BspUart(const Config &cfg) : _huart(cfg.huart), _transmit_enable(cfg.transmit_enable), _baudrate(cfg.baudrate)
+BspUart<BUFFER_SIZE>::BspUart(const Config &cfg) : BspUartBase(cfg.huart), _transmit_enable(cfg.transmit_enable), _baudrate(cfg.baudrate)
 {
   // 构造函数只做赋值；运行时逻辑（FreeRTOS资源创建）推迟到 init()
 }
@@ -308,6 +302,14 @@ Status BspUart<BUFFER_SIZE>::init()
   // 只要 DMA 晚一点来搬（多路 DMA 抢总线仲裁时就可能），下一个字节到达就 ORE 丢掉，
   // 整条接收流随之错位。FIFO 有 16 字节，能吸收这段搬运抖动。
   // (void)HAL_UARTEx_EnableFifoMode(_huart);
+
+  // 先登记再开接收中断：HAL 回调靠登记表找到本实例
+  const Status reg = register_self();
+  if (reg != Status::OK)
+  {
+    cleanup_resources();
+    return reg; // BAD_ARG：句柄已被别的实例占用；FULL：登记表满
+  }
 
   // 启动接收（HAL 内部会清 IDLE 标志并使能 IDLE 中断；失败则释放资源并上报）
   if (!arm_reception())

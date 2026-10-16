@@ -1,5 +1,4 @@
 #include "can_rx_node.hpp"
-#include "bsp_cfg.hpp"
 
 extern "C" void can_rx_task(void *argument)
 {
@@ -7,14 +6,15 @@ extern "C" void can_rx_task(void *argument)
   SysFlagWaitRunning();
   CanRxNode::frozen = true;
   static_assert(configTICK_RATE_HZ == 1000U, "can_rx_task requires a 1 kHz tick");
-  BspCan *const buses[] = {&bsp_can1, &bsp_can2, &bsp_can3};
+  // 总线来自 BspCan 的登记表（各实例 init() 时登记，运行态之前已定型），库里不引用板级实例
   TickType_t wake_time = xTaskGetTickCount();
   for (;;)
   {
     if ((osEventFlagsGet(sysEvent) & SYS_FLAG_RUNNING_BIT) != 0U)
     {
-      for (BspCan *can : buses)
+      for (uint32_t bus = 0U; bus < BspCan::instance_count(); ++bus)
       {
+        BspCan *const can = BspCan::instance_at(bus);
         if (can->_rx_message_buffer == nullptr || can->_rx_return_buffer == nullptr)
         {
           continue;

@@ -114,7 +114,9 @@ public:
   /**
    * @brief 初始化：创建收发消息缓冲区、配置过滤器、启动硬件与接收中断
    *
-   * @return Status OK=初始化成功，IO_ERROR=资源创建/硬件启动失败
+   * @return Status OK=初始化成功，IO_ERROR=资源创建/硬件启动失败，
+   *                BAD_ARG=句柄为空或已被另一个实例登记，FULL=CAN 登记表已满
+   * @note 先把本实例登记进 BspCan 的登记表（HAL 回调、库的巡检与收发任务都靠它找实例），再启动硬件。
    */
   Status init();
 
@@ -145,6 +147,16 @@ public:
 
   /** @brief sys_task 每毫秒调用；非阻塞恢复 Bus-Off，不重新分配资源。 */
   Status service_recovery();
+
+  /** @brief 已登记（init() 时登记）的 CAN 实例数；库的巡检与收发任务按它遍历 */
+  static uint32_t instance_count();
+
+  /** @brief 第 index 个已登记实例；越界返回 nullptr */
+  static BspCan *instance_at(uint32_t index);
+
+  /** @brief 按 HAL 句柄查已登记实例；查不到返回 nullptr（ISR 中可调用） */
+  static BspCan *find(const FDCAN_HandleTypeDef *hfdcan);
+
   struct Diagnostics
   {
     volatile uint32_t bus_off_events = 0;
@@ -182,6 +194,20 @@ private:
   Status config_filter();
   Status start_hardware();
   Status start_reception();
+
+  /**
+   * @brief 把本实例加入登记表（重复登记无副作用）
+   * @return OK=已登记；BAD_ARG=句柄为空或已被另一个实例登记；FULL=登记表满
+   * @note init() 在打开接收中断之前调用：HAL 回调与库任务都靠这张表找实例，
+   *       所以库里不再引用任何板级全局实例（bsp_can1 等由用户工程自己定义）。
+   */
+  Status register_self();
+
+  /** @brief 登记表容量：STM32H7 最多 FDCAN1~3 */
+  static constexpr uint32_t MAX_INSTANCES = 3U;
+
+  static BspCan  *_registry[MAX_INSTANCES]; ///< 已登记实例（只在初始化阶段写，中断与任务只读）
+  static uint32_t _registry_num;            ///< 已登记数量
 };
 
 #endif

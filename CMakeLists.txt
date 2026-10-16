@@ -3,7 +3,6 @@
 #
 # 宿主工程（CubeMX 生成的根 CMakeLists.txt，##### User ##### 段）：
 #
-#   set(CUBOT_BSP_BOARD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/app/board)  # 含 bsp_cfg.hpp 的目录（阶段 C 去掉）
 #   add_subdirectory(third_party/cubot_bsp)
 #   target_link_libraries(${CMAKE_PROJECT_NAME} cubot_bsp)
 #
@@ -22,13 +21,6 @@ if(NOT TARGET stm32cubemx)
         "找不到 CubeMX 生成的 stm32cubemx 目标：请在 add_subdirectory(cmake/stm32cubemx) 之后再接入 cubot_bsp")
 endif()
 
-# 过渡期：bsp_can.cpp / bsp_uart.cpp 的 HAL 回调直接引用板级全局实例（bsp_can1..3、bsp_uart1..10），
-# 需要宿主提供声明这些实例的 bsp_cfg.hpp。阶段 C 改为实例登记 + 回调查表后去掉。
-if(NOT CUBOT_BSP_BOARD_DIR OR NOT EXISTS "${CUBOT_BSP_BOARD_DIR}/bsp_cfg.hpp")
-    message(FATAL_ERROR
-        "请先 set(CUBOT_BSP_BOARD_DIR <含 bsp_cfg.hpp 的目录>) 再接入 cubot_bsp（当前值：'${CUBOT_BSP_BOARD_DIR}'）")
-endif()
-
 enable_language(C CXX ASM)
 
 # OBJECT 库而不是 STATIC：库里有覆盖 HAL / FreeRTOS 弱符号的强定义（HAL_*Callback、fault_on_*），
@@ -43,14 +35,12 @@ file(GLOB_RECURSE CUBOT_BSP_SOURCES CONFIGURE_DEPENDS
 )
 target_sources(cubot_bsp PRIVATE ${CUBOT_BSP_SOURCES})
 
-target_include_directories(cubot_bsp
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/bsp
-        ${CMAKE_CURRENT_SOURCE_DIR}/service
-        ${CMAKE_CURRENT_SOURCE_DIR}/device
-        ${CMAKE_CURRENT_SOURCE_DIR}/algorithm
-    PRIVATE
-        ${CUBOT_BSP_BOARD_DIR}
+# 库里不包含任何板级头文件：HAL 回调与库任务按句柄查实例登记表（BspCan / BspUartBase）
+target_include_directories(cubot_bsp PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/bsp
+    ${CMAKE_CURRENT_SOURCE_DIR}/service
+    ${CMAKE_CURRENT_SOURCE_DIR}/device
+    ${CMAKE_CURRENT_SOURCE_DIR}/algorithm
 )
 
 # HAL / CMSIS / FreeRTOS 的头文件与宏都来自 CubeMX 的 stm32cubemx（INTERFACE）目标

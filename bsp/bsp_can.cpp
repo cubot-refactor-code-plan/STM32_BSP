@@ -1,6 +1,4 @@
 #include "bsp_can.hpp"
-#include "bsp_cfg.hpp"
-#include "fdcan.h"
 #include <string.h>
 
 
@@ -13,19 +11,13 @@ extern "C"
    */
   void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
   {
+    // 按句柄查登记表；没有登记的 FDCAN（宿主工程自己管理的）直接忽略
     if (RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE)
     {
-      if (hfdcan == &hfdcan1)
+      BspCan *can = BspCan::find(hfdcan);
+      if (can != nullptr)
       {
-        bsp_can1.process_fifo0_isr();
-      }
-      else if (hfdcan == &hfdcan2)
-      {
-        bsp_can2.process_fifo0_isr();
-      }
-      else if (hfdcan == &hfdcan3)
-      {
-        bsp_can3.process_fifo0_isr();
+        can->process_fifo0_isr();
       }
     }
   }
@@ -37,21 +29,70 @@ extern "C"
   {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-    if (hfdcan == &hfdcan1)
+    BspCan *can = BspCan::find(hfdcan);
+    if (can != nullptr)
     {
-      bsp_can1.trigger_tx_from_isr(&xHigherPriorityTaskWoken);
-    }
-    else if (hfdcan == &hfdcan2)
-    {
-      bsp_can2.trigger_tx_from_isr(&xHigherPriorityTaskWoken);
-    }
-    else if (hfdcan == &hfdcan3)
-    {
-      bsp_can3.trigger_tx_from_isr(&xHigherPriorityTaskWoken);
+      can->trigger_tx_from_isr(&xHigherPriorityTaskWoken);
     }
 
     portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   }
+}
+
+
+/* ==================== 实例登记表 ==================== */
+
+BspCan  *BspCan::_registry[BspCan::MAX_INSTANCES] = {};
+uint32_t BspCan::_registry_num                    = 0U;
+
+uint32_t BspCan::instance_count()
+{
+  return _registry_num;
+}
+
+BspCan *BspCan::instance_at(uint32_t index)
+{
+  return (index < _registry_num) ? _registry[index] : nullptr;
+}
+
+/** @brief 线性查找（最多 3 项），ISR 中调用 */
+BspCan *BspCan::find(const FDCAN_HandleTypeDef *hfdcan)
+{
+  for (uint32_t i = 0U; i < _registry_num; ++i)
+  {
+    if (_registry[i]->_hfdcan == hfdcan)
+    {
+      return _registry[i];
+    }
+  }
+  return nullptr;
+}
+
+/** @brief 登记本实例；同一句柄只允许一个实例，重复登记自己无副作用 */
+Status BspCan::register_self()
+{
+  if (_hfdcan == nullptr)
+  {
+    return Status::BAD_ARG;
+  }
+  for (uint32_t i = 0U; i < _registry_num; ++i)
+  {
+    if (_registry[i] == this)
+    {
+      return Status::OK;
+    }
+    if (_registry[i]->_hfdcan == _hfdcan)
+    {
+      return Status::BAD_ARG; // 两个实例绑定同一条总线：回调只会交给其中一个，属于配置错误
+    }
+  }
+  if (_registry_num >= MAX_INSTANCES)
+  {
+    return Status::FULL;
+  }
+  _registry[_registry_num] = this;
+  ++_registry_num;
+  return Status::OK;
 }
 
 
@@ -72,6 +113,20 @@ BspCan::BspCan(const Config &cfg)
 
 BspCan::~BspCan()
 {
+  // 先从登记表摘除，回调与库任务就不会再碰到本实例
+  for (uint32_t i = 0U; i < _registry_num; ++i)
+  {
+    if (_registry[i] == this)
+    {
+      for (uint32_t j = i + 1U; j < _registry_num; ++j)
+      {
+        _registry[j - 1U] = _registry[j];
+      }
+      --_registry_num;
+      _registry[_registry_num] = nullptr;
+      break;
+    }
+  }
   if (_hfdcan != nullptr)
   {
     HAL_FDCAN_Stop(_hfdcan);
@@ -95,6 +150,11 @@ BspCan::~BspCan()
 
 Status BspCan::init()
 {
+  // 登记要早于打开中断：HAL 回调与库任务靠登记表找到本实例
+  const Status reg = register_self();
+  if (reg != Status::OK)
+    return reg; // BAD_ARG：句柄为空或已被别的实例占用；FULL：登记表满
+
   // 创建接收消息缓冲区
   _rx_message_buffer = xMessageBufferCreate((sizeof(CanRxMsg) + 4) * 8);
   if (_rx_message_buffer == nullptr)

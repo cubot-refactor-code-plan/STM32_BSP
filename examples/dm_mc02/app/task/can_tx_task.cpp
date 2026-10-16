@@ -1,5 +1,4 @@
 #include "can_tx_node.hpp"
-#include "bsp_cfg.hpp"
 
 #include <string.h>
 
@@ -8,11 +7,12 @@ extern "C" void can_tx_task(void *argument)
   (void)argument;
   SysFlagWaitRunning();
   CanTxNode::frozen = true;
-  BspCan *const buses[] = {&bsp_can1, &bsp_can2, &bsp_can3};
+  // 总线来自 BspCan 的登记表（各实例 init() 时登记，运行态之前已定型），库里不引用板级实例
   TickType_t wake_time = xTaskGetTickCount();
   bool has_nodes = false;
-  for (BspCan *can : buses)
+  for (uint32_t bus = 0U; bus < BspCan::instance_count(); ++bus)
   {
+    BspCan *const can = BspCan::instance_at(bus);
     for (CanTxNode *node = can->tx_head; node != nullptr; node = node->next)
     {
       node->last_send_tick = wake_time;
@@ -26,8 +26,9 @@ extern "C" void can_tx_task(void *argument)
   }
   for (;;)
   {
-    for (BspCan *can : buses)
+    for (uint32_t bus = 0U; bus < BspCan::instance_count(); ++bus)
     {
+      BspCan *const can = BspCan::instance_at(bus);
       for (CanTxNode *node = can->tx_head; node != nullptr; node = node->next)
       {
         if (osMutexAcquire(node->bufferMutex, pdMS_TO_TICKS(1U)) != osOK)

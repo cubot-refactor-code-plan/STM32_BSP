@@ -1,5 +1,6 @@
 #include "app_task.hpp"
-#include "bsp_cfg.hpp"
+#include "bsp_can.hpp"
+#include "bsp_uart.hpp"
 
 #include "FreeRTOS.h" // IWYU pragma: keep
 #include "online_check.hpp"
@@ -16,8 +17,6 @@ volatile Status sys_task_online_status = Status::NOT_INIT;
 // rx_recover() 只在 RX 三处状态不一致时才动作，正常时每次只读一次寄存器。
 constexpr uint32_t UART_PATROL_PERIOD = 10U;
 
-// 串口组（ISR 只计数，收发恢复只能在任务侧做）
-BspUart<128> *const patrol_uarts[] = {&bsp_uart1, &bsp_uart3, &bsp_uart4, &bsp_uart5, &bsp_uart7, &bsp_uart8, &bsp_uart9, &bsp_uart10};
 
 
 extern "C" void sys_task(void *argument)
@@ -29,17 +28,19 @@ extern "C" void sys_task(void *argument)
   TickType_t wake_time = xTaskGetTickCount();
   for (;;)
   {
-    // can硬件bus-off自恢复
-    bsp_can1.service_recovery();
-    bsp_can2.service_recovery();
-    bsp_can3.service_recovery();
-    // 串口补救：卡死的发送续发 + 停摆的接收重建
+    // CAN 硬件 Bus-Off 自恢复：遍历 BspCan 登记表（各实例 init() 时登记）
+    for (uint32_t i = 0U; i < BspCan::instance_count(); ++i)
+    {
+      (void)BspCan::instance_at(i)->service_recovery();
+    }
+    // 串口补救：卡死的发送续发 + 停摆的接收重建（ISR 只计数，恢复只能在任务侧做），遍历 BspUart 登记表
     if ((sys_task_loop_count % UART_PATROL_PERIOD) == 0U)
     {
-      for (auto *uart : patrol_uarts)
+      for (uint32_t i = 0U; i < BspUartBase::instance_count(); ++i)
       {
-        uart->tx_recover();
-        uart->rx_recover();
+        BspUartBase *const uart = BspUartBase::instance_at(i);
+        (void)uart->tx_recover();
+        (void)uart->rx_recover();
       }
     }
     // 在线情况更新

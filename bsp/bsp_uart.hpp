@@ -64,8 +64,81 @@
  *       半传输（HT）事件也会进回调，但它不是帧边界，直接忽略。
  *       发送：数据先写进发送流缓冲区，再由任务或 TX Complete 中断交给 DMA。
  */
+/**
+ * @brief 串口实例的公共基类：实例登记表 + 中断 / 巡检入口
+ *
+ * @note 为什么要有它：BspUart 是模板，不同缓冲区大小是不同类型，HAL 回调与库的巡检任务
+ *       没法用一个指针数组统一指向它们。基类不带模板参数，登记表存基类指针，
+ *       入口函数做成虚函数，由 BspUart<N> 实现。
+ * @note 登记时机：BspUart::init() 在打开接收中断之前登记；HAL 回调按 huart 句柄查表，
+ *       查不到的串口（宿主工程自己管的、没有用本驱动的）直接忽略。
+ *       登记只发生在初始化阶段（调度器启动前、或运行态之前），中断与任务只读这张表。
+ */
+class BspUartBase
+{
+public:
+  /** @brief 析构时从登记表摘除 */
+  virtual ~BspUartBase();
+
+  /** @brief 收到一帧数据（IDLE/TC 中断）；见 BspUart::on_idle_isr() */
+  virtual void on_idle_isr(uint16_t size, BaseType_t *pxHigherPriorityTaskWoken) = 0;
+
+  /** @brief 上一批发完了，接着发下一批（TX Complete 中断）；见 BspUart::start_transmission_from_isr() */
+  virtual void start_transmission_from_isr(BaseType_t *pxHigherPriorityTaskWoken) = 0;
+
+  /** @brief UART 错误回调（ISR）；见 BspUart::on_error_isr() */
+  virtual void on_error_isr() = 0;
+
+  /** @brief TX 卡死巡检（任务上下文）；见 BspUart::tx_recover() */
+  virtual bool tx_recover() = 0;
+
+  /** @brief RX 停摆巡检（任务上下文）；见 BspUart::rx_recover() */
+  virtual bool rx_recover() = 0;
+
+  /** @brief 绑定的 UART 句柄 */
+  UART_HandleTypeDef *handle() const
+  {
+    return _huart;
+  }
+
+  /** @brief 已登记的串口实例数 */
+  static uint32_t instance_count();
+
+  /** @brief 第 index 个已登记实例；越界返回 nullptr */
+  static BspUartBase *instance_at(uint32_t index);
+
+  /** @brief 按 HAL 句柄查已登记实例；查不到返回 nullptr（ISR 中可调用） */
+  static BspUartBase *find(const UART_HandleTypeDef *huart);
+
+  // 登记表里存的是对象地址，复制会让两个对象争同一个句柄
+  BspUartBase(const BspUartBase &)            = delete;
+  BspUartBase &operator=(const BspUartBase &) = delete;
+
+protected:
+  /** @brief 只保存句柄，不登记（登记在 init() 里做，构造函数只做赋值） */
+  explicit BspUartBase(UART_HandleTypeDef *huart) : _huart(huart)
+  {
+  }
+
+  /**
+   * @brief 把本实例加入登记表（重复登记无副作用）
+   * @return OK=已登记；BAD_ARG=句柄为空，或另一个实例已经登记了同一个句柄；FULL=登记表已满
+   */
+  Status register_self();
+
+  UART_HandleTypeDef *_huart; ///< UART 句柄
+
+private:
+  /** @brief 登记表容量：STM32H7 最多 11 路 U(S)ART（含 LPUART1），留 1 个余量 */
+  static constexpr uint32_t MAX_INSTANCES = 12U;
+
+  static BspUartBase *_registry[MAX_INSTANCES]; ///< 已登记实例
+  static uint32_t     _registry_num;            ///< 已登记数量
+};
+
+
 template <size_t BUFFER_SIZE = 256>
-class BspUart
+class BspUart : public BspUartBase
 {
 public:
   // ---------------- 公有接口 ----------------
@@ -125,12 +198,14 @@ public:
    * @note 必须在调度器启动之后调用，因为里面要创建 FreeRTOS 对象。
    *       可以重复调用：开头会先把上一次的资源释放掉。
    *
-   * @return OK=成功；IO_ERROR=资源创建失败或接收没能启动
+   * @return OK=成功；IO_ERROR=资源创建失败或接收没能启动；
+   *         BAD_ARG=句柄为空或已被另一个实例登记；FULL=串口登记表已满
+   * @note 在打开接收中断之前把本实例登记进 BspUartBase 的登记表，HAL 回调靠它找到本实例。
    */
   Status init();
 
   /** @brief 析构：停掉 RX/TX DMA 并释放所有软件资源 */
-  ~BspUart();
+  ~BspUart() override;
 
   /**
    * @brief 把数据写进发送流缓冲区，并启动 DMA 发出去
@@ -180,7 +255,7 @@ public:
    *
    * @return true=这次确实恢复成功了一次
    */
-  bool tx_recover();
+  bool tx_recover() override;
 
   /**
    * @brief RX 异常时的恢复：复位接收通道，再重新启动
@@ -194,7 +269,7 @@ public:
    *
    * @return true=这次确实重建了一次（累计次数见 rx_diag().error_cnt）
    */
-  bool rx_recover();
+  bool rx_recover() override;
 
   // ----------------
 
@@ -206,14 +281,14 @@ public:
    * @param size 这一帧的字节数
    * @param pxHigherPriorityTaskWoken 中断里需要唤醒的高优先级任务
    */
-  void on_idle_isr(uint16_t size, BaseType_t *pxHigherPriorityTaskWoken);
+  void on_idle_isr(uint16_t size, BaseType_t *pxHigherPriorityTaskWoken) override;
 
   /**
    * @brief 上一批发完了，接着发缓冲区里的下一批（TX Complete 中断触发）
    *
    * @param pxHigherPriorityTaskWoken 需初始化为 pdFALSE，唤醒了高优先级任务则置 pdTRUE
    */
-  void start_transmission_from_isr(BaseType_t *pxHigherPriorityTaskWoken);
+  void start_transmission_from_isr(BaseType_t *pxHigherPriorityTaskWoken) override;
 
   /**
    * @brief UART 错误回调（ISR）
@@ -221,7 +296,7 @@ public:
    * @note 这里只累加计数，不做恢复：HAL 的 Abort 接口内部是阻塞版 HAL_DMA_Abort，
    *       中断里不能用。RX 交给任务侧的 rx_recover()，TX 交给 tx_recover()。
    */
-  void on_error_isr();
+  void on_error_isr() override;
 
   // ----------------
   // ---------------- 查询接口 ----------------
@@ -252,7 +327,6 @@ private:
 
   // 成员变量
 
-  UART_HandleTypeDef  *_huart;                      ///< UART 句柄
   StreamBufferHandle_t _rx_stream_buffer = nullptr; ///< 接收流缓冲区
   StreamBufferHandle_t _tx_stream_buffer = nullptr; ///< 发送流缓冲区
   SemaphoreHandle_t    _tx_write_lock    = nullptr; ///< 发送入队锁：保证发送流缓冲区只有一个写者

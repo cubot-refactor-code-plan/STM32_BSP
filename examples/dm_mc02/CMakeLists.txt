@@ -71,7 +71,6 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
 # 接入 cubot_bsp：本仓库根就是库，示例用相对路径接入；
 # 用户工程里写 add_subdirectory(third_party/cubot_bsp) 即可（第二个参数只有库目录不在本工程之下时才需要）
-set(CUBOT_BSP_BOARD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/app/board) # 含 bsp_cfg.hpp 的目录（阶段 C 去掉）
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../.. ${CMAKE_CURRENT_BINARY_DIR}/cubot_bsp)
 
 # 板级用户代码（实例配置、api_main、任务、测试）
