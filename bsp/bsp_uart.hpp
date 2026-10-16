@@ -20,10 +20,11 @@
  *   // 1) 模板实例化在 bsp_uart.cpp
  *   template class BspUart<128>;
  *
- *   // 2) 全局实例在 bsp_cfg.cpp：句柄 + 是否启用发送 + 波特率
+ *   // 2) 全局实例写在用户的板级配置里（示例：examples/dm_mc02/app/board/bsp_cfg.cpp）：句柄 + 是否启用发送 + 波特率
  *   __attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart1({&huart1, true, 115200});
- *   // 3) init() 在 bsp_init() 里统一调用（必须在调度器启动之后）
- *   bsp_uart1.init();
+ *   // 3) init() 在初始化阶段调用（cubot_init() 之后、cubot_start() 之前，调度器启动前即可）；
+ *   //    init() 时登记进 BspUartBase 登记表，HAL 回调与库的串口巡检靠它找到实例
+ *   configASSERT(bsp_uart1.init() == Status::OK);
  *
  *   // 4) 收发
  *   bsp_uart1.send(buffer, 8);           // 写进发送流缓冲区，DMA 自动发出去

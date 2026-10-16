@@ -11,11 +11,11 @@
  *          定时器时钟、PSC、ARR 全部由使用方从 CubeMX 生成的配置里抄进 Config，
  *          驱动本身不写死任何硬件常量，换板子只改实例化处的参数。
  *
- * @note 本板实例（见 bsp_cfg.cpp，参数取自 CubeMX；定时器时钟 275 MHz = APB1/APB2 137.5 MHz × 2）：
+ * @note 示例板实例（见 examples/dm_mc02/app/board/bsp_cfg.cpp，参数取自 CubeMX；定时器时钟 275 MHz = APB1/APB2 137.5 MHz × 2）：
  *
  *       bsp_pwm_buzzer  TIM12_CH2  PB15   无源蜂鸣器（由 Device 层 DeviceBuzzer 使用）
  *
- *       其余 PWM 通道（排针舵机、陀螺仪加热等）按需在 bsp_cfg.cpp 里照同样方式实例化。
+ *       其余 PWM 通道（排针舵机、陀螺仪加热等）按需在用户的板级配置里照同样方式实例化。
  *
  * @note 用法（占空比是 0~100 的浮点值；脉宽接口对舵机更直观）：
  *

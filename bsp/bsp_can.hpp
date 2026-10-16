@@ -12,10 +12,12 @@
  *
  * @details 使用示例：
  *
- * @note 先在bsp_cfg实例化并外部声明，再在freertos_init()中初始化它
+ * @note 实例写在用户的板级配置里（示例：examples/dm_mc02/app/board/bsp_cfg.cpp），
+ *       在 cubot_init() 之后、cubot_start() 之前 init()；init() 时登记进 BspCan 登记表，
+ *       HAL 回调与库的 CAN 任务靠它找到实例：
  *
- *      bsp_can1({&hfdcan1, "CAN1"});
- *      bsp_can1.init();
+ *      BspCan bsp_can1({&hfdcan1, "CAN1"});
+ *      configASSERT(bsp_can1.init() == Status::OK);
  *
  * @note 如何使用：（未管理任务级的互斥情况）
  *
