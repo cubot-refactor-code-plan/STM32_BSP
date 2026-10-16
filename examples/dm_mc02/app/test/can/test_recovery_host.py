@@ -75,6 +75,8 @@ int main() {
 with tempfile.TemporaryDirectory(prefix='can-recovery-') as directory:
     path = Path(directory)
     (path/'bsp_can.hpp').write_text(header)
+    # 库源文件先包含 stm32h7xx_hal.h 取 HAL 模块开关，按 FDCAN 已开启处理
+    (path/'stm32h7xx_hal.h').write_text('#pragma once\n#define HAL_FDCAN_MODULE_ENABLED\n')
     (path/'recovery.cpp').write_text((root/'bsp/bsp_can_recovery.cpp').read_text())
     (path/'test.cpp').write_text(test)
     subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Werror',str(path/'recovery.cpp'),str(path/'test.cpp'),'-o',str(path/'test')],check=True)
