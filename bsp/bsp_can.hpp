@@ -30,8 +30,12 @@
 #ifndef __BSP_CAN_HPP__
 #define __BSP_CAN_HPP__
 
+#include "stm32h7xx_hal.h" // IWYU pragma: keep（HAL 模块开关来自 stm32h7xx_hal_conf.h）
+
+// 宿主工程没在 CubeMX 里开 FDCAN（HAL_FDCAN_MODULE_ENABLED 未定义）时，本模块整体不参与编译
+#ifdef HAL_FDCAN_MODULE_ENABLED
+
 #include "cmsis_os2.h"
-#include "fdcan.h"    // IWYU pragma: keep
 #include "FreeRTOS.h" // IWYU pragma: keep
 #include "message_buffer.h"
 #include "task.h"
@@ -209,5 +213,7 @@ private:
   static BspCan  *_registry[MAX_INSTANCES]; ///< 已登记实例（只在初始化阶段写，中断与任务只读）
   static uint32_t _registry_num;            ///< 已登记数量
 };
+
+#endif // HAL_FDCAN_MODULE_ENABLED
 
 #endif

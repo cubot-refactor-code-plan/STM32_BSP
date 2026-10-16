@@ -1,3 +1,8 @@
+#include "stm32h7xx_hal.h" // IWYU pragma: keep（HAL 模块开关）
+
+// 宿主工程没在 CubeMX 里开 FDCAN（HAL_FDCAN_MODULE_ENABLED 未定义）时，本文件不参与编译
+#ifdef HAL_FDCAN_MODULE_ENABLED
+
 #include "can_tx_node.hpp"
 #include <new>
 #include <stdio.h>
@@ -219,3 +224,5 @@ Status CanTxNode::filldata(uint8_t data[], uint8_t slot)
 
   return Status::OK;
 }
+
+#endif // HAL_FDCAN_MODULE_ENABLED

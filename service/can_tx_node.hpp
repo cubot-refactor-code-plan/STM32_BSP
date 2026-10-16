@@ -1,6 +1,11 @@
 #ifndef CAN_TX_NODE_HPP
 #define CAN_TX_NODE_HPP
 
+#include "stm32h7xx_hal.h" // IWYU pragma: keep（HAL 模块开关来自 stm32h7xx_hal_conf.h）
+
+// 宿主工程没在 CubeMX 里开 FDCAN（HAL_FDCAN_MODULE_ENABLED 未定义）时，本模块整体不参与编译
+#ifdef HAL_FDCAN_MODULE_ENABLED
+
 #include "bsp_can.hpp"
 
 /**
@@ -79,5 +84,7 @@ CanTxNode *regist(BspCan &can_item, uint32_t can_id, uint8_t division, uint8_t s
  *       清零帧由发送任务后续发送，不保证返回时已发送到总线。
  */
 Status unregist(CanTxNode *node, uint8_t slot);
+
+#endif // HAL_FDCAN_MODULE_ENABLED
 
 #endif // CAN_TX_NODE_HPP

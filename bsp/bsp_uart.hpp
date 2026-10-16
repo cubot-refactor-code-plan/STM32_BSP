@@ -46,11 +46,15 @@
 #ifndef __BSP_UART_HPP__
 #define __BSP_UART_HPP__
 
+#include "stm32h7xx_hal.h" // IWYU pragma: keep（HAL 模块开关来自 stm32h7xx_hal_conf.h）
+
+// 宿主工程没在 CubeMX 里开 UART（HAL_UART_MODULE_ENABLED 未定义）时，本模块整体不参与编译
+#ifdef HAL_UART_MODULE_ENABLED
+
 #include "FreeRTOS.h" // IWYU pragma: keep
 #include "semphr.h"   // IWYU pragma: keep (TX 启动锁)
 #include "stream_buffer.h"
 #include "task.h"  // IWYU pragma: keep
-#include "usart.h" // IWYU pragma: keep
 
 #include "status.hpp" // 统一状态码
 
@@ -402,5 +406,7 @@ private:
   // ----------------
 };
 
+
+#endif // HAL_UART_MODULE_ENABLED
 
 #endif // __BSP_UART_HPP__

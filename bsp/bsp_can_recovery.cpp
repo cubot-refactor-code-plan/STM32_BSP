@@ -1,3 +1,8 @@
+#include "stm32h7xx_hal.h" // IWYU pragma: keep（HAL 模块开关）
+
+// 宿主工程没在 CubeMX 里开 FDCAN（HAL_FDCAN_MODULE_ENABLED 未定义）时，本文件不参与编译
+#ifdef HAL_FDCAN_MODULE_ENABLED
+
 #include "bsp_can.hpp"
 
 bool BspCan::tx_available() const
@@ -59,3 +64,5 @@ Status BspCan::service_recovery()
   taskEXIT_CRITICAL();
   return recovering ? Status::BUSY : Status::OK;
 }
+
+#endif // HAL_FDCAN_MODULE_ENABLED

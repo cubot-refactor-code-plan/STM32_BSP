@@ -1,3 +1,8 @@
+#include "stm32h7xx_hal.h" // IWYU pragma: keep（HAL 模块开关）
+
+// 宿主工程没在 CubeMX 里开 UART（HAL_UART_MODULE_ENABLED 未定义）时，本文件不参与编译
+#ifdef HAL_UART_MODULE_ENABLED
+
 #include "bsp_uart.hpp"
 #include "FreeRTOS.h"  // IWYU pragma: keep
 #include <stdarg.h>
@@ -1020,3 +1025,5 @@ void BspUart<BUFFER_SIZE>::cleanup_resources()
 }
 
 // ----------------
+
+#endif // HAL_UART_MODULE_ENABLED

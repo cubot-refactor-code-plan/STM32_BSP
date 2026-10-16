@@ -11,6 +11,12 @@
 #ifndef __BSP_CFG_HPP__
 #define __BSP_CFG_HPP__
 
+// 本板的 CubeMX 句柄与引脚宏（库只依赖 stm32h7xx_hal.h，板级配置自己引入）
+#include "fdcan.h" // IWYU pragma: keep（hfdcan1..3）
+#include "main.h"  // IWYU pragma: keep（引脚宏）
+#include "tim.h"   // IWYU pragma: keep（htim12）
+#include "usart.h" // IWYU pragma: keep（huart1..10）
+
 #include "bsp_pwm.hpp"
 #include "bsp_can.hpp"
 #include "bsp_gpio.hpp"

@@ -1,7 +1,7 @@
 #include "fault_record.hpp"
 
 #include "FreeRTOS.h" // IWYU pragma: keep (taskDISABLE_INTERRUPTS / configMAX_TASK_NAME_LEN)
-#include "main.h"     // IWYU pragma: keep (CoreDebug / __BKPT / __get_IPSR)
+#include "stm32h7xx_hal.h" // IWYU pragma: keep (CoreDebug / __BKPT / __get_IPSR)
 #include "task.h"
 
 #include <stddef.h> // offsetof

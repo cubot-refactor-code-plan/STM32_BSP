@@ -1,3 +1,8 @@
+#include "stm32h7xx_hal.h" // IWYU pragma: keep（HAL 模块开关）
+
+// 宿主工程没在 CubeMX 里开 FDCAN（HAL_FDCAN_MODULE_ENABLED 未定义）时，本文件不参与编译
+#ifdef HAL_FDCAN_MODULE_ENABLED
+
 #include "dji_motor.hpp"
 #include <stdio.h>
 #include <string.h>
@@ -378,3 +383,5 @@ Status DjiMotor<type>::statu(void) const
 template class DjiMotor<Motor3508>;
 template class DjiMotor<Motor6020>;
 template class DjiMotor<Motor2006>;
+
+#endif // HAL_FDCAN_MODULE_ENABLED

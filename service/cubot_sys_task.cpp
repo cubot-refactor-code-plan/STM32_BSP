@@ -1,6 +1,6 @@
 #include "cubot.hpp"
-#include "bsp_can.hpp"
-#include "bsp_uart.hpp"
+#include "bsp_can.hpp"  // 未开 FDCAN 时为空
+#include "bsp_uart.hpp" // 未开 UART 时为空
 
 #include "FreeRTOS.h" // IWYU pragma: keep
 #include "online_check.hpp"
@@ -28,11 +28,14 @@ extern "C" void cubot_sys_task(void *argument)
   TickType_t wake_time = xTaskGetTickCount();
   for (;;)
   {
+#ifdef HAL_FDCAN_MODULE_ENABLED
     // CAN 硬件 Bus-Off 自恢复：遍历 BspCan 登记表（各实例 init() 时登记）
     for (uint32_t i = 0U; i < BspCan::instance_count(); ++i)
     {
       (void)BspCan::instance_at(i)->service_recovery();
     }
+#endif
+#ifdef HAL_UART_MODULE_ENABLED
     // 串口补救：卡死的发送续发 + 停摆的接收重建（ISR 只计数，恢复只能在任务侧做），遍历 BspUart 登记表
     if ((cubot_sys_loop_count % UART_PATROL_PERIOD) == 0U)
     {
@@ -43,6 +46,7 @@ extern "C" void cubot_sys_task(void *argument)
         (void)uart->rx_recover();
       }
     }
+#endif
     // 在线情况更新
     cubot_sys_online_status = Online::update();
     ++cubot_sys_loop_count;

@@ -9,12 +9,12 @@
  *
  * @details 宿主工程在 freertos.c 的 MX_FREERTOS_Init()（USER CODE 段）里按顺序调用：
  *
- *            cubot_init();    // 1. 建系统事件组 + 创建库任务（任务入口先等运行态，此时还不跑）
+ *            cubot_init();    // 1. 建系统事件组 + 创建库任务（调度器启动前不会运行）
  *            board_init();    // 2. 用户：各外设实例 init()、设备 init()、注册 CAN 节点等
  *            xTaskCreate(...);// 3. 用户：创建业务任务（入口先调 SysFlagWaitRunning()）
  *            cubot_start();   // 4. 置运行位：前面有初始化失败记录就在这里停机（fault_record 记下行号）
  *
- *          库任务（都按 1 kHz 节拍，见各自实现）：
+ *          库任务（都按 1 kHz 节拍，见各自实现；CAN 两个任务只在宿主工程开了 FDCAN 时创建）：
  *            - cubot_sys_task    CAN Bus-Off 恢复、每 10 ms 串口收发补救、推进 Online 离线计时；
  *            - cubot_can_rx_task 把各 CAN 收到的帧按 ID 分发给接收节点，没人要的进回退缓冲；
  *            - cubot_can_tx_task 按槽位聚合发送 CAN 控制帧（保底心跳 + 100 ms 指令有效期）；

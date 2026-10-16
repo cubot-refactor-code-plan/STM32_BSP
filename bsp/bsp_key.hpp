@@ -38,7 +38,7 @@
 #ifndef __BSP_KEY_HPP__
 #define __BSP_KEY_HPP__
 
-#include "main.h" // IWYU pragma: keep (GPIO_TypeDef, GPIO pins, HAL_GPIO_ReadPin)
+#include "stm32h7xx_hal.h" // IWYU pragma: keep (GPIO_TypeDef, GPIO pins, HAL_GPIO_ReadPin)
 #include <stdint.h>
 
 #include "status.hpp" // 统一状态码

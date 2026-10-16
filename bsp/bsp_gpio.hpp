@@ -32,7 +32,7 @@
 #ifndef __BSP_GPIO_HPP__
 #define __BSP_GPIO_HPP__
 
-#include "main.h" // IWYU pragma: keep
+#include "stm32h7xx_hal.h" // IWYU pragma: keep
 #include <stdint.h>
 
 #include "status.hpp" // 统一状态码
