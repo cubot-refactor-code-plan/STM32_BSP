@@ -96,12 +96,6 @@ BspGpio gyro_gyro_cs({GYRO_GYRO_CS_GPIO_Port, GYRO_GYRO_CS_Pin}); // PC3
 ///< BTB 扩展 IO
 BspGpio btb_gpio({BTB_GPIO_GPIO_Port, BTB_GPIO_Pin}); // PE14
 
-///< LCD 控制
-BspGpio lcd_cs({LCD_CS_GPIO_Port, LCD_CS_Pin});    // PE15
-BspGpio lcd_blk({LCD_BLK_GPIO_Port, LCD_BLK_Pin}); // PB10
-BspGpio lcd_res({LCD_RES_GPIO_Port, LCD_RES_Pin}); // PB11
-BspGpio lcd_dc({LCD_DC_GPIO_Port, LCD_DC_Pin});    // PD10
-
 
 /* ==================== 蜂鸣器 ==================== */
 

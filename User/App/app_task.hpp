@@ -20,12 +20,6 @@ extern "C"
 #endif
 
   /**
-   * @brief 菜单任务（按键轮询 + 事件转发给 menu 模块）
-   * @param argument 任务参数（未使用，NULL）
-   */
-  void task_menu(void *argument);
-
-  /**
    * @brief 系统级 1 kHz 维护任务：CAN Bus-Off 恢复、每 10 ms 一次的串口收发补救、推进全部 Online 对象的离线计时
    * @param argument 任务参数（未使用，NULL）
    * @note 由 all_init() 创建，不应由业务代码直接调用。
@@ -39,24 +33,6 @@ extern "C"
    */
   void can_rx_task(void *argument);
   // void dji_motor_task(void *argument);
-
-  /**
-   * @brief 菜单消息测试任务 1（阻塞等待 menu_sem[0] 后经 USART1 发送测试字节）
-   * @param arg 任务参数（未使用，NULL）
-   */
-  void msg_task_task1(void *arg);
-
-  /**
-   * @brief 菜单消息测试任务 2（阻塞等待 menu_sem[1] 后经 USART1 发送测试字节）
-   * @param arg 任务参数（未使用，NULL）
-   */
-  void msg_task_task2(void *arg);
-
-  /**
-   * @brief 菜单消息测试任务 3（阻塞等待 menu_sem[2] 后经 USART1 发送测试字节）
-   * @param arg 任务参数（未使用，NULL）
-   */
-  void msg_task_task3(void *arg);
 
 
 #ifdef __cplusplus

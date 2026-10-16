@@ -16,18 +16,12 @@
 #ifndef __DEVICE_CFG_HPP__
 #define __DEVICE_CFG_HPP__
 
-#include "lcd.hpp"
+#include "status.hpp" // IWYU pragma: keep
 
 
 /* ==================== 函数声明 ==================== */
 
 void device_init();
-
-
-/* ==================== 全局声明 ==================== */
-
-///< LCD（SPI 硬件，240x280 竖屏）
-extern Lcd lcd;
 
 
 #endif // __DEVICE_CFG_HPP__

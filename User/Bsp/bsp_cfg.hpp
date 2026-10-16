@@ -50,10 +50,6 @@ extern BspGpio gyro_acc_cs;
 extern BspGpio gyro_gyro_cs;
 extern BspGpio dcmi_pwdn;
 extern BspGpio btb_gpio;
-extern BspGpio lcd_cs;
-extern BspGpio lcd_blk;
-extern BspGpio lcd_res;
-extern BspGpio lcd_dc;
 
 
 ///< 蜂鸣器

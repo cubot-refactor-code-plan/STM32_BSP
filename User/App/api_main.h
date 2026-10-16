@@ -23,10 +23,6 @@
 #include "semphr.h"
 
 
-///< 菜单信号量数组（3 个，menu 模块长按触发，msg_task 测试任务消费）
-extern SemaphoreHandle_t menu_sem[3];
-
-
 #ifdef __cplusplus
 extern "C"
 {

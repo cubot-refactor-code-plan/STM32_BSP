@@ -23,9 +23,6 @@
 
 /* ==================== 全局变量定义 ==================== */
 
-///< 菜单信号量数组（3 个，menu 模块长按触发，由 api_main 统一创建）
-SemaphoreHandle_t menu_sem[3];
-
 /* C620/M3508 CAN1 实机测试诊断量（可在调试器 Live Watch 中查看） */
 volatile Status   can1_statu                = Status::NOT_INIT;
 volatile uint32_t can1_tx_ok_count          = 0;
@@ -60,14 +57,6 @@ void all_init()
   // 初始化错误记录信号量
   configASSERT(SysFlagInit() == Status::OK);
 
-  // 创建信号量
-  for (int i = 0; i < 3; i++)
-  {
-    // 菜单信号量
-    menu_sem[i] = xSemaphoreCreateBinary();
-    configASSERT(menu_sem[i] != nullptr);
-  }
-
   /* 初始化BSP设备 */
   bsp_init();
 
@@ -87,14 +76,6 @@ void all_init()
   configASSERT(xTaskCreate(sys_task, "sys", 256, NULL, tskIDLE_PRIORITY + 7, NULL) == pdPASS);
   configASSERT(xTaskCreate(can_rx_task, "can_rx", 512, NULL, tskIDLE_PRIORITY + 8, NULL) == pdPASS);
   configASSERT(xTaskCreate(can_tx_task, "can_tx", 512, NULL, tskIDLE_PRIORITY + 8, NULL) == pdPASS);
-
-  /* 菜单任务（LCD 菜单 + 按键，事件转发给 menu 模块；优先级最高） */
-  configASSERT(xTaskCreate(task_menu, "t_menu", 2048, NULL, tskIDLE_PRIORITY + 6, NULL) == pdPASS);
-
-  /* 菜单消息测试任务（3 个，各阻塞等待 menu_sem） */
-  configASSERT(xTaskCreate(msg_task_task1, "m_tsk1", 256, NULL, tskIDLE_PRIORITY + 4, NULL) == pdPASS);
-  configASSERT(xTaskCreate(msg_task_task2, "m_tsk2", 256, NULL, tskIDLE_PRIORITY + 4, NULL) == pdPASS);
-  configASSERT(xTaskCreate(msg_task_task3, "m_tsk3", 256, NULL, tskIDLE_PRIORITY + 4, NULL) == pdPASS);
 
 #if APP_TEST_CAN_RECOVERY_ENABLED
   configASSERT(xTaskCreate(can_recovery_test_task, "can_fault", 512, NULL, tskIDLE_PRIORITY + 5, NULL) == pdPASS);
@@ -137,7 +118,7 @@ void all_init()
  * @brief ST的默认任务，弱定义，在这里定义，方便寻找
  *
  * @note 任务名保留 CubeMX 生成的 StartDefaultTask（便于 CubeMX 重新生成时同名兼容）；
- *       自定义任务函数命名遵循小写蛇形规范（如 task_menu）。
+ *       自定义任务函数命名遵循小写蛇形规范（如 sys_task）。
  *
  * @note freertos调用cpp的函数，需要extern "C"修饰，避免C++的名称修饰导致找不到函数
  *
