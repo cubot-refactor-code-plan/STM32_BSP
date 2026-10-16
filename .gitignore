@@ -6,6 +6,9 @@
 build/
 Debug/
 
+# CubeMX 重新生成时会把 CMSIS-DSP 拷回来；本库不用 DSP（2026-10-16 已删除），不要再提交
+Drivers/CMSIS/DSP/
+
 # 保留个人配置的.vscode
 
 # 具体的编译中间文件 (Object files, dependency files)

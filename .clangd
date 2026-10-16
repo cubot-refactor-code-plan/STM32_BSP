@@ -1,3 +1,7 @@
+CompileFlags:
+  # 仓库根是库，本身不能单独配置；编辑库代码时借用示例工程的编译数据库（先编译一次示例）
+  CompilationDatabase: examples/dm_mc02/build/Debug
+
 Completion:
   HeaderInsertion: Never
 
