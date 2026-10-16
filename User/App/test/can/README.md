@@ -2,7 +2,7 @@
 
 ## 固件与状态
 
-`APP_TEST_CAN_RECOVERY_ENABLED=1` 启用测试；不能同时启用 DJI 电机转动测试。
+`APP_TEST_CAN_RECOVERY_ENABLED=1` 启用测试（DJI 电机转动测试已于 2026-10-16 随 mini-bsp 删减移除，不再有互斥）。
 CAN1 连接 C620 ID2，所有发送指令都是零电流。复位后等待 GDB 写
 `can_recovery_test_arm=1`，不会自动注入故障。
 
@@ -88,6 +88,7 @@ CAN1 / C620 ID2 / M3508，电源限流 2 A，全程零电流指令。
 - 输出轴位移 +6.9367 / -7.7443 rad；最终转速 0、0x200 全零输出。
 - 反馈在线，反馈拒收与 CAN 收发错误计数均为 0。
 
-当前（2026-10-16 起）所有测试开关默认为 0：APP_TEST_DJI_MOTOR_ENABLED=0，
-APP_TEST_CAN_RECOVERY_ENABLED=0，默认固件不在 CAN1 上注册任何节点。
-打开电机测试后复位等待 arm=1；Bus-Off 生产恢复逻辑持续由 sys_task 服务。
+当前（2026-10-16 起）测试开关只剩 APP_TEST_ONLINE_CHECK_ENABLED 与
+APP_TEST_CAN_RECOVERY_ENABLED，默认都为 0，默认固件不在 CAN1 上注册任何节点。
+打开 CAN 恢复测试后复位等待 arm=1；Bus-Off 生产恢复逻辑持续由 sys_task 服务。
+上面记录里提到的 DJI 电机测试固件（dji_motor_test）已在 mini-bsp 删减中移除。

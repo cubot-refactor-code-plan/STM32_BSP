@@ -1,398 +1,224 @@
-# CUBOT Code Rebuild：
+# CUBOT BSP：可作为 git submodule 接入的 STM32H7 板级库
 
-## 引脚冲突（工程中使用的方案）
-
-1. SPI3 与 串口3 串口5（SPI3的三个引脚）。串口3 与 RS485-3 只能保留一个
-
-- 方案1： U3和U5（舍弃掉SPI3和RS485-3）
-- ~~方案2： SPI3和RS485-3（U3和U5）~~
-
-2. IIC1和串口4,引脚复用：选择串口4
-
-## todo
-
-- [x] USB-HID
-- [x] QSPI-Flash
-- [ ] Cortex‑M7 内核相关
-  - [ ] 分支预测
-  - [ ] MPU 内存保护单元
-  - [ ] Cache 缓存
-- [ ] 看门狗、DWT 驱动
-- [x] 多种电机驱动开发（DJI DM）
-- [ ] 舵机、BMI088、及国产陀螺仪驱动
-- [ ] ~~串口协议裁判系统~~、遥控器、~~云台、功率控制、发射机构、超电、底盘控制~~等等
+> 分支 `mini-bsp`。目标：从 DM-MC02 整车工程里提炼出一个库，**任何 STM32H7 CubeMX 工程**都能把它作为 git submodule 接入。
+>
+> 期望的使用方式：**CubeMX 配置一个新工程 → 接入本 submodule → 修改少量配置 → 编写业务代码。**
+>
+> 当前进度：阶段 A（删减，与 main 对齐）已完成；本仓库目前仍是一个完整的 CubeMX 工程（DM-MC02 板），目录搬迁与去板级耦合按下文「分阶段实施」推进。下文标注「目标」的接口与目录**尚未实现**。
 
 ---
 
-- BSP 层的 CAN 接收与 UART 收发已于 2026-10-16 修复并实机验证（见下节「运行期保护与故障现场」）；其余 BSP 未重新实测
-- device层中的代码很久没测了，需要测试（`dm_motor.cpp` 目前只有声明、没有实现，见文末）
-- app层仍旧在规划，各种test还没写，以及具体的代码应该实现什么，还在规划
-- protocol_uart还是很难绷，目前没有代码在用，框架没问题，但是实际没有在用的
-- menu太敷衍了，需要移植一个好看的ui出来，我实现的这个非常敷衍而且简单，包括触发使用的方式和处理
-- SPI和IIC的回调问题，目前使用的都是阻塞。但是这种通讯模式好像阻塞最适合，因为需要建立连接和等待，例如CS拉高拉低、IIC的处理。
+## 1. 目标用法（阶段 B~D 完成后成立）
 
-## 运行期保护与故障现场
+### 1.1 CubeMX 新建工程时的要求
 
-2026-10-16 修复并实机验证的五项（均在内部回环 / 串口跳线上测过，真实总线上的外部节点、真实电调未测）：
-
-| 项目 | 现在的行为 | 位置 |
+| 项目 | 要求 | 原因 |
 | --- | --- | --- |
-| CAN 接收 | 先读进 64 字节缓冲；DLC > 8 的帧（FD 帧或经典帧 DLC 9~15）丢弃并计入 `diagnostics.rx_len_drop`，不再写穿中断栈 | `User/Bsp/bsp_can.cpp` |
-| UART 收发 | 多任务可并发 `send()` / `printf()`（写锁 + printf 锁）；DMA 启动失败的包留在发送缓冲重发；`sys_task` 每 10 ms 对 8 路串口调 `tx_recover()` / `rx_recover()`，修复卡死的发送与停摆的接收（期间关本串口中断，DMA 句柄卡在 ERROR 时复位）；诊断量见 `rx_diag()` / `tx_diag()` | `User/Bsp/bsp_uart.*`、`User/App/task/sys_task.cpp` |
-| 测试开关 | `User/App/app_test.hpp` 中所有测试默认 0，默认固件不驱动任何执行器 | `User/App/app_test.hpp` |
-| CAN 指令有效期 | 发送槽位超过 100 ms 没被 `FillData()` / `filldata()` 刷新就清零（只清该槽位），控制任务卡死后电机停转；诊断计数 `expiredCount` | `User/Service/can_tx_node.*`、`User/App/task/can_tx_task.cpp` |
-| 初始化失败与故障现场 | `bsp_init()` / `device_init()` 逐条 `configASSERT`；`SysCompleteInit()` 有失败记录时由 `all_init()` 断言停机；`SysFlagWaitRunning()` 等到失败位就退出任务；断言 / 栈溢出 / 分配失败都写进 `fault_record` 再停机（接调试器时 BKPT） | `User/Service/fault_record.*`、`User/Service/status.*` |
+| 芯片 | STM32H7 系列 | 驱动用到 FDCAN、DMA Stream、AXI SRAM（RAM_D1） |
+| 工具链 | Project Manager → Toolchain = **CMake** | 库以 CMake 子目录方式接入，依赖 CubeMX 生成的 `stm32cubemx` INTERFACE 目标 |
+| RTOS | FreeRTOS，**CMSIS_V2** 接口；tick **1 kHz** | 代码里有 `static_assert(configTICK_RATE_HZ == 1000)` |
+| FreeRTOS 钩子 | `configCHECK_FOR_STACK_OVERFLOW = 2`、`configUSE_MALLOC_FAILED_HOOK = 1` | 钩子里调库的 `fault_on_stack_overflow()` / `fault_on_malloc_failed()` 记录现场 |
+| HAL 时基 | 不用 SysTick（选一个空闲定时器） | SysTick 给 FreeRTOS |
+| FDCAN | 经典 CAN、RX FIFO0；开中断 0 / 1 | `BspCan` 用 FIFO0 收、TX FIFO 发、TX-FIFO-EMPTY 中断续发 |
+| UART | 需要的串口开 **RX DMA + TX DMA + 全局中断**（只收的串口可不配 TX DMA） | `BspUart` 用 IDLE + DMA 收、DMA 发 |
+| TIM PWM | 需要的通道配成 PWM，记下定时器时钟、PSC、ARR | `BspPwm` 的参数全部由用户配置传入 |
+| GPIO | 按键、片选等按需配置并起 Label | `BspGpio` / `BspKey` 只封装电平读写 |
 
-UART 接口约定：`send(data, size, timeout_ms, written)`、`receive(buf, size, timeout_ms, received)`，超时单位是毫秒，`portMAX_DELAY` 表示一直等；`Config` 第三个参数是波特率（只给发送侧判卡死用，必须与 CubeMX 一致）。已知限制：7 路 TX DMA 开着 DMA FIFO，卡死恢复时可能丢 DMA FIFO 里预读的字节（约 8~16 字节/次）。
+### 1.2 接入 submodule
 
-查看故障现场：`fault_record` 放在 RAM_D1 的 `.noinit` 段，复位（看门狗 / 复位键 / 调试器）后仍保留，掉电后靠 `magic` 判断是否有效。用 GDB 挂接后 `print fault_record`，可看到种类（ASSERT / STACK_OVERFLOW / MALLOC_FAILED）、累计次数、文件名与行号、tick、IPSR、任务名。
+```bash
+git submodule add <本仓库地址> third_party/cubot_bsp
+```
 
-## 具体文件树
+在 CubeMX 生成的根 `CMakeLists.txt` 末尾加两行（目标库名 `cubot_bsp`，暂定）：
+
+```cmake
+add_subdirectory(third_party/cubot_bsp)
+target_link_libraries(${CMAKE_PROJECT_NAME} cubot_bsp)
+```
+
+库自己 `enable_language(CXX)`（C++11），并链接 `stm32cubemx` 取 HAL / FreeRTOS 的头文件与宏，所以宿主工程不需要再配 include 路径。
+
+### 1.3 修改的配置（CubeMX 重新生成不会覆盖 USER CODE 段，但会覆盖链接脚本）
+
+1. **链接脚本**加两个段（DMA 访问不到 DTCM，所以串口实例要放进 RAM_D1；故障记录要跨复位保留）：
+
+   ```ld
+   .dma_buffer (NOLOAD) :
+   {
+     . = ALIGN(32);
+     *(.dma_buffer)
+     *(.dma_buffer*)
+     . = ALIGN(32);
+   } >RAM_D1
+
+   .noinit (NOLOAD) :
+   {
+     . = ALIGN(4);
+     *(.noinit)
+     *(.noinit*)
+     . = ALIGN(4);
+   } >RAM_D1
+   ```
+
+   CubeMX 重新生成会用默认内容覆盖链接脚本，生成后要把这两段加回来（目标：`templates/` 里提供片段与检查脚本）。
+
+2. **`FreeRTOSConfig.h` 的 USER CODE 1 段**把 `configASSERT` 接到故障记录（原型直接写在这里，因为内核源码看不到库的头文件）：
+
+   ```c
+   void fault_on_assert(const char *file, int line);
+   void fault_on_stack_overflow(const char *task_name);
+   void fault_on_malloc_failed(void);
+   #define configASSERT( x ) if ((x) == 0) { fault_on_assert(__FILE__, __LINE__); }
+   ```
+
+3. **`freertos.c` 的钩子桩**（USER CODE 4 / 5）分别调 `fault_on_stack_overflow(pcTaskName)`、`fault_on_malloc_failed()`。
+
+4. **板级实例配置**（用户工程里的一个 `.cpp`，目标：从 `templates/board_cfg.cpp` 复制后改）：
+
+   ```cpp
+   // 哪些外设、用哪个句柄、波特率 / 定时器参数——全部由用户决定，库里不写死任何板级常量
+   BspCan bsp_can1({&hfdcan1, "CAN1"});
+   __attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart1({&huart1, true, 115200U});
+   BspPwm bsp_pwm_buzzer({&htim12, TIM_CHANNEL_2, 275000000UL, 23U, 1999U});
+
+   void board_init(void)
+   {
+     configASSERT(bsp_can1.init() == Status::OK);       // 每条 init() 单独一行断言，失败时记录里的行号直接指出是哪一路
+     configASSERT(bsp_uart1.init() == Status::OK);
+     configASSERT(bsp_pwm_buzzer.init() == Status::OK);
+   }
+   ```
+
+5. **初始化入口**：`freertos.c` 的 `MX_FREERTOS_Init()` USER CODE 段里调一次库入口（目标名 `cubot_init()`：建系统事件组 → 调用户的 `board_init()` → 建库自带的任务 → 置运行位）。
+
+### 1.4 编写业务代码
+
+```cpp
+DjiMotor<Motor3508> chassis_lf(bsp_can1, 1U);   // 初始化期注册收发节点
+
+extern "C" void chassis_task(void *)
+{
+  SysFlagWaitRunning();                         // 等系统进入运行态；初始化失败时任务自行退出
+  for (;;)
+  {
+    const MotorData &d = chassis_lf.data();     // 反馈由 CAN 接收任务按 ID 分发、解包
+    (void)chassis_lf.FillData(1000);            // 只写发送槽位，CAN 发送任务统一发出；100 ms 不刷新自动清零
+    vTaskDelay(pdMS_TO_TICKS(1));
+  }
+}
+```
+
+---
+
+## 2. 库包含什么（当前状态）
+
+依赖方向：`App → Module → Device → Bsp`，`Service` / `Algorithm` 贯穿各层；下层不包含上层头文件。
+
+| 层 | 模块 | 功能 | 实机状态 |
+| --- | --- | --- | --- |
+| Bsp | `bsp_can` / `bsp_can_recovery` | FDCAN 收发（MessageBuffer）、DLC > 8 帧丢弃计数、Bus-Off 非阻塞恢复 | DLC 过滤：内部回环实测；Bus-Off 恢复：2026-09-30 实测 |
+| Bsp | `bsp_uart` | IDLE + DMA 收、多任务安全发（写锁 + printf 锁）、发送卡死续发、接收停摆重建 | 串口跳线实测（2026-10-16） |
+| Bsp | `bsp_pwm` | 通用 PWM：占空比 / 脉宽 / 频率，参数全由配置传入 | 蜂鸣器通道实测频率 |
+| Bsp | `bsp_key` / `bsp_gpio` | 轮询消抖按键 / GPIO 电平 | 按键实测 |
+| Service | `status` | 统一状态码、系统事件标志、等待运行态 | 实测 |
+| Service | `fault_record` | 断言 / 栈溢出 / 分配失败现场记录，`.noinit` 跨复位保留 | 实测 |
+| Service | `can_rx_node` / `can_tx_node` | CAN 按 ID 分发接收、槽位聚合发送、100 ms 指令有效期 | 回环实测 |
+| Service | `online_check`、`motor_definition` | 在线计时、电机通用数据 | 编译通过 |
+| Device | `dji_motor` | M3508 / M2006 / GM6020，每电机一个对象 | C620 + M3508 实测（2026-09-01 / 10-01，当时版本；本轮改动后未接电机复测） |
+| Device | `device_buzzer` | 无源蜂鸣器（音调 / 音量 / 时长） | 实测 |
+| Device | `dm_imu` | 空文件占位，待按 CAN 节点层重写 | — |
+| Algorithm | `pid` | 位置式 PID | 未测；已知问题：“微分先行”实为对目标值求导 |
+
+当前属于示例板、搬迁后进 `examples/dm_mc02` 的代码：`User/Bsp/bsp_cfg.*`、`User/Device/device_cfg.*`（实例与初始化）、`User/App/`（`api_main`、`sys_task`、`can_rx_task` / `can_tx_task`、`key_task`、测试）。
+
+已按 main 移除（2026-10-16）：TinyUSB / `bsp_usb`、QSPI 外置 Flash 与 XIP、EmmV5、协议层（DataPack / `protocol_uart`）、LCD 与菜单、达妙电机空声明、ADC1 与 CMSIS-DSP、`bsp_buzzer`（换成 `bsp_pwm` + `device_buzzer`）。CAN 节点分发层与 `DjiMotor` 按决定保留（可移植库需要一条总线挂多类设备）。
+
+---
+
+## 3. 设计
+
+### 3.1 目标目录结构（阶段 B）
 
 ```txt
-root              
-│                   │.clang-format         代码格式化设置 可以按照自己风格改
-│                   │.clangd               clangd 语言服务器配置
-│                   │.gitignore            git 忽略文件
-│                   │CMakeLists.txt        主构建脚本
-│                   │CMakePresets.json     CMake 预设配置
-│                   │DM_MC02.ioc           STM32CubeMX 工程文件
-│                   │README.md             本文件
-│                   │startup_stm32h723xx.s 启动文件
-│                   │STM32H723xG_flash.ld  链接脚本（构建实际使用；含 XIP、.dma_buffer、.noinit、USB 邮箱段；CubeMX 重新生成会覆盖它，生成后要还原）
-│                   |---
-├─.vscode           |`tasks`是终端执行的任务
-|                   |如果想使用烧录和调试功能，需要工程名字和文件夹名字一样才可以（elf/hex文件名字和主文件夹名字相同）
-├─build             |---
-│  └─Debug          |编译出来的临时文件
-├─cmake             |---
-│  └─stm32cubemx    |STM32的库以及cmake链接方式
-├─Core              |---
-│  ├─Inc            |STM32的HAL层头文件
-│  └─Src            |STM32的HAL层源文件
-├─docs              |文档与图片
-│  ├─编码规范.md
-│  ├─分层规划图.png
-│  └─CtrBoard-H7管脚标注图.pdf
-├─Drivers           |STM32的Driver层文件
-├─Flash             |个人写的烧录相关 工程名字和文件夹名字一样才可以烧录 写好了DAP和JLink 以及win和linux的烧录脚本 ozone
-├─Middlewares       |官方生成的中间件库，FreeRTOS，USB
-├─QSPI_Flash        |板载 W25Q64JV（OCTOSPI2）驱动、XIP 与外部加载器，见 QSPI_Flash/README.md
-├─tinyusb-0.20.0    |TinyUSB库
-└─User              |---
-    ├─CMakeLists.txt  |User库一键导入配置
-    ├─Bsp             |板载支持驱动
-    │  ├─bsp_buzzer.cpp / hpp
-    │  ├─bsp_can.cpp / hpp        CAN 收发、DLC 过滤、诊断
-    │  ├─bsp_can_recovery.cpp     Bus-Off 恢复（sys_task 调用）
-    │  ├─bsp_cfg.cpp / hpp        全局实例与 bsp_init()（逐条断言）
-    │  ├─bsp_gpio.hpp
-    │  ├─bsp_key.cpp / hpp
-    │  ├─bsp_uart.cpp / hpp       IDLE+DMA 收、多任务安全发、收发恢复
-    │  ├─bsp_usb.cpp / hpp
-    │  └─tusb_config.h
-    ├─Device          |设备层
-    │  ├─device_cfg.cpp / hpp     全局实例与 device_init()（逐条断言）
-    │  ├─device_emmv5.cpp / hpp   张大头 Emm_V5（未实例化）
-    │  ├─dji_motor.cpp / hpp      DJI 电机（M3508 / M2006 / GM6020）
-    │  ├─dm_imu.cpp / hpp         达妙 IMU（未接入接收）
-    │  ├─dm_motor.cpp / hpp       达妙电机（只有声明，没有实现）
-    │  ├─lcd.cpp / hpp
-    │  └─lcd_font.hpp
-    ├─Module          |模块层（ 多个设备组合 ）
-    │  └─menu.cpp / hpp
-    ├─Protocol        |协议层
-    │  ├─data_pack.cpp / hpp
-    │  ├─protocol_cfg.cpp / hpp
-    │  └─protocol_uart.cpp / hpp
-    ├─Service         |服务层
-    │  ├─can_rx_node.cpp / hpp    CAN 接收节点（按 ID 分发）
-    │  ├─can_tx_node.cpp / hpp    CAN 发送节点（槽位聚合、100 ms 指令有效期）
-    │  ├─fault_record.cpp / hpp   故障现场记录（.noinit，跨复位保留）
-    │  ├─motor_definition.hpp
-    │  ├─online_check.cpp / hpp
-    │  └─status.cpp / hpp         统一状态码与系统事件标志
-    ├─Algorithm       |算法层
-    │  ├─pid.cpp
-    │  └─pid.hpp
-    └─App             |应用层 / c cpp混编接口层
-        ├─api_main.cpp / h
-        ├─app_message.cpp / hpp
-        ├─app_task.hpp
-        ├─app_test.hpp            测试开关（默认全部为 0）
-        ├─task/       |业务任务（除默认任务外）
-        │  ├─can_rx_task.cpp / can_tx_task.cpp
-        │  ├─msg_task.cpp
-        │  ├─sys_task.cpp         1 kHz：CAN Bus-Off 恢复、每 10 ms 串口补救、Online 计时
-        │  └─task_menu.cpp
-        └─test/       |测试任务（can / motor / online_check / qspi_flash / uart / usb）
-
+cubot_bsp/                    仓库根 = 库
+├─ CMakeLists.txt             定义 cubot_bsp 库目标；链接 stm32cubemx（INTERFACE）取 HAL / FreeRTOS
+├─ bsp/  service/  device/  algorithm/   来自现在的 User/ 各层
+├─ templates/                 board_cfg.cpp、FreeRTOSConfig.h USER CODE 片段、链接脚本片段、cubot_config.h
+├─ docs/                      编码规范、器件手册
+└─ examples/
+   └─ dm_mc02/                现在的 CubeMX 工程整体 git mv 进来
+      ├─ DM_MC02.ioc、Core/、Drivers/、Middlewares/、startup、链接脚本、cmake/、CMakePresets.json
+      ├─ Flash/、.vscode/
+      ├─ app/                 板级用户代码：实例配置、api_main、业务任务、测试
+      └─ CMakeLists.txt       add_subdirectory(../.. cubot_bsp) 接入本库
 ```
-我认为：ST官方生成的属于BSP的一部分 以及 Service的一部分
 
-freertos的硬件支持、usb的硬件支持，外设封装好的支持等等，本质上都在硬件抽象（hal）。但是板载支持包（bsp）不仅要硬件抽象，是要完全不考虑硬件，只需要简易的使用代码就可以操控整个板子的外设，不需要考虑板子上的任意情况。这是bsp要做的，也是最麻烦的。
+- `.ioc` 与 `Core/`、`Drivers/`、`Middlewares/` 一起搬，相对路径不变，CubeMX 仍可在 `examples/dm_mc02/` 里打开、重新生成。
+- 示例既是使用示范，也是实机回归工程：`cd examples/dm_mc02 && cmake --preset Debug && cmake --build --preset Debug`。
+- 代价：用户克隆 submodule 时会带上示例的 HAL / FreeRTOS（数十 MB），git 无法排除。
+- 烧录脚本现在用目录名找 ELF，搬迁后要改成用 CMake 工程名。
 
-其他的device等等很好理解，只需要在写好的bsp层的基础上，对要做处理的设备进行处理即可
+### 3.2 去板级耦合（阶段 C）
 
-![alt text](分层规划图.png)
+现在与 DM-MC02 绑定的地方及改法：
 
-## 如何开发
+| 现状 | 改法 |
+| --- | --- |
+| `bsp_can.cpp` / `bsp_uart.cpp` 的 HAL 回调按句柄 if-else 分发给写死的 `bsp_can1..3`、`bsp_uart1..10` | 实例在 `init()` 时登记到静态表，回调查表分发；表容量可配置 |
+| 驱动头文件包含 CubeMX 按外设生成的 `fdcan.h` / `usart.h` / `tim.h`（没开该外设就不存在） | 只包含 `main.h` / HAL 头；按 `HAL_FDCAN_MODULE_ENABLED`、`HAL_UART_MODULE_ENABLED`、`HAL_TIM_MODULE_ENABLED` 条件编译各驱动 |
+| 实例与初始化写在库里（`bsp_cfg.cpp`、`device_cfg.cpp`） | 移到用户工程（`templates/board_cfg.cpp` 示范） |
+| 库的后台任务（CAN 收 / 发分发、`sys_task` 巡检：Bus-Off 恢复、串口补救、在线计时）由 `api_main` 创建 | 由库入口 `cubot_init()` 创建，优先级 / 栈深可配置 |
+| 库占用 HAL 回调 `HAL_FDCAN_RxFifo0Callback`、`HAL_FDCAN_TxFifoEmptyCallback`、`HAL_UARTEx_RxEventCallback`、`HAL_UART_TxCpltCallback`、`HAL_UART_ErrorCallback` | 保留由库定义，文档写明宿主工程不能再定义同名回调；需要时提供用户钩子 |
 
-### 编译、烧写和调试
+### 3.3 配置化（阶段 D）
 
-本工程已经配置好 CMake Presets、VS Code Tasks 和 Cortex-Debug。以下 Linux 链路于 **2026-09-01** 在本仓库和实机 STM32H723 上验证通过：
+用户工程提供 `cubot_config.h`（不提供就用库内默认值）：CAN 收发队列深度、实例表容量、库任务优先级与栈深、CAN 指令有效期（默认 100 ms）、巡检周期（默认 10 ms）、在线超时等。
 
-| 能力 | 状态 | 已验证的链路 |
+### 3.4 约束与限制
+
+- 只支持 STM32H7（FDCAN、DMA Stream、RAM_D1）。
+- 假定 **D-Cache 关闭**；开启时 `.dma_buffer` 要配成 MPU 非缓存区。
+- 需要 FreeRTOS + CMSIS-RTOS v2；C++11；tick 1 kHz。
+- `BspUart` 卡死恢复时，若 TX DMA 开着 DMA FIFO，可能丢 FIFO 里预读的字节（约 8~16 字节/次）。
+- 运行期可恢复的失败返回 `Status`，初始化失败一律 `configASSERT` 停机并写 `fault_record`（见 `docs/编码规范.md` 第 8 节）。
+
+### 3.5 分阶段实施
+
+| 阶段 | 内容 | 状态 |
 | --- | --- | --- |
-| 编译 | 已实测 | CMake 3.22 + Ninja 1.10 + Arm GNU Toolchain 15.3，成功生成 `build/Debug/DM_MC02.elf` |
-| 烧写 | 已实测 | CMSIS-DAPv2 + OpenOCD，经 SWD 完成 program、verify 和 reset，校验结果为 `Verified OK` |
-| 调试 | 已实测 | OpenOCD GDB Server + `arm-none-eabi-gdb`，成功识别 Cortex-M7、连接目标、复位暂停并读取寄存器 |
-| J-Link | 配置存在，当前未实测 | 烧写脚本使用 OpenOCD 的 `jlink` 适配器；当前没有 J-Link 探针，不能据此声称实机链路可用 |
-| Windows 脚本 | 配置存在，当前未实测 | `Flash/*.bat` 未在 Windows 环境验证 |
+| A | 删减，与 main 对齐（见第 2 节） | ✅ 2026-10-16，每项编译 / 烧录 / 挂接检查 |
+| B | 目录搬迁：CubeMX 工程 `git mv` 到 `examples/dm_mc02`，`User/` 拆成库目录，板级代码进示例，烧录脚本改用 CMake 工程名 | 待做 |
+| C | 去板级耦合（3.2） | 待做 |
+| D | 配置化（3.3）与 `templates/` | 待做 |
+| E | 验证：示例工程实机回归；再用一个全新 CubeMX 工程按第 1 节从零接入，证明可移植 | 待做 |
 
-#### 环境要求
+---
 
-- `cmake`、`ninja`、`arm-none-eabi-gcc` 和 `arm-none-eabi-gdb` 在 `PATH` 中。
-- CMSIS-DAP 链路需要 `openocd`，并将探针通过 SWD 接到目标板。
-- VS Code 图形化调试需要 Cortex-Debug；代码索引建议安装 clangd，任务按钮为可选插件。
-- J-Link 烧写需要 OpenOCD 包含 `jlink`/libjaylink 适配器；Ozone 或 J-Link GDB Server 调试仍需安装 SEGGER J-Link Software。
-- 当前脚本和 `.vscode/launch.json` 用工作区目录名寻找 ELF，因此工作区目录名、CMake 工程名和输出文件名应保持为 `DM_MC02`。若重命名工程，需要同步修改这些配置。
+## 4. 当前仓库：编译、烧录与调试（DM-MC02 板）
 
-#### 命令行使用（Linux）
-
-首次配置并编译：
+环境：`cmake`（≥ 3.22）、`ninja`、Arm GNU Toolchain（`arm-none-eabi-gcc` / `-gdb`）在 `PATH` 中；CMSIS-DAP 探针 + OpenOCD（本机须用 `/usr/local/bin/openocd` 0.12，0.11 驱动不了 Horco 探针）。工作区目录名、CMake 工程名与 ELF 名须保持 `DM_MC02`（脚本按目录名找 ELF）。
 
 ```bash
-cmake --preset Debug
-cmake --build --preset Debug
+cmake --preset Debug                 # 首次配置
+cmake --build --preset Debug         # 编译，产物 build/Debug/DM_MC02.elf
+bash Flash/OpenOCD_flash.sh          # 单段烧录：program ELF verify reset exit
+bash Flash/JLink_flash.sh            # J-Link（经 OpenOCD jlink 适配器，未实测）
 ```
 
-后续仅编译：
+- 探针配置见 `Flash/README.md`：固定 HID 后端；**不注册 OCTOSPI2 外置 Flash bank**（注册后 OpenOCD 在 program / reset 时会碰 OCTOSPI2，固件不重新初始化它时会把调试口卡死，需要重新上电）。
+- VS Code：`Terminal: Run Task` 里有编译与烧录任务；调试配置 `cmsis-dap-debug`（Cortex-Debug + OpenOCD），外设寄存器描述 `Flash/STM32H723.svd`。
+- 测试开关在 `User/App/app_test.hpp`，默认全部为 0：Online 自检、CAN1 Bus-Off 恢复测试（见 `User/App/test/can/README.md`）。
+- 查看故障现场：GDB 挂接后 `print fault_record`（种类、次数、文件行号、tick、IPSR、任务名）。
 
-```bash
-cmake --build build/Debug
-```
+示例板引脚取舍（DM-MC02）：SPI3 与串口 3 / 串口 5 引脚冲突，保留 U3、U5（舍弃 SPI3 与 RS485-3）；I2C1 与串口 4 复用，选串口 4。
 
-使用 CMSIS-DAP 烧写（脚本会分别烧写内部 HEX 和外置 USB XIP BIN，并执行校验和复位）：
+---
 
-```bash
-./Flash/OpenOCD_flash.sh
-```
+## 5. 开发约定
 
-注意：第二段需要先让固件跑起来、由固件初始化 OCTOSPI2 后再写外置 Flash。开机就停机的固件（例如故意让 `init()` 失败的测试固件）第二段会失败，并可能把调试口卡死（OpenOCD 无法 examine 内核），需要给板子重新上电；这类固件只烧内部 Flash 即可。
-
-使用 J-Link 探针烧写（经 OpenOCD `jlink` 适配器，当前环境未连接 J-Link 探针）：
-
-```bash
-./Flash/JLink_flash.sh
-```
-
-#### VS Code 使用
-
-- `Terminal: Run Task` 中可运行 `Configure`、`Build`、`Clean_Rebuild`、`Clean` 以及 Linux/Windows 的 OpenOCD、J-Link 烧写任务；默认构建任务 `Build` 可用 `Ctrl+Shift+B` 运行。
-- 在“运行和调试”中选择 `cmsis-dap-debug`，即可通过 OpenOCD 启动 Cortex-Debug，会装载 `build/Debug/DM_MC02.elf` 并运行至 `main`。
-- `jlink-debug` 配置已经存在，但需安装 SEGGER J-Link 软件后再使用，当前环境未实测。
-- Cortex-Debug 可查看变量、寄存器、内存和基本的 FreeRTOS 运行信息；外设寄存器描述文件位于 `Flash/STM32H723.svd`。
-- `Flash/linux.jdebug` 是 Ozone 工程示例，其中含创建者机器的绝对路径、探针序列号和 Ozone 版本信息，换机器后必须在 Ozone 中重新选择 ELF 与探针，不能直接视为通用配置。
-
-相关配置文件：`.vscode/tasks.json`、`.vscode/launch.json`、`Flash/daplink.cfg` 和 `Flash/README.md`。
-
-#### CAN1 驱动 C620/M3508 实机验证
-
-2026-09-01 已使用 C620（绿色双闪，ID 为 2）和 M3508 完成实机验证：CAN 波特率为 1 Mbps，控制帧标准 ID 为 `0x200`，ID2 的电流指令放在 `DATA[2:3]`（高字节在前），反馈帧标准 ID 为 `0x202`。本次成功连接使用同面线；控制板和电调均需正确供电，CANH/CANL 线序及终端电阻应按硬件说明检查。
-
-低电流短时测试已移至 `User/App/test/motor/dji_motor_test.cpp`：启用后保持零输出，调试器写 `dji_motor_test_arm=1` 才执行一次双向测试——原始电流 +512 与 -512（约 0.625 A）各 600 ms，之后滑停并检查方向与位移。测试由 `User/App/app_test.hpp` 中的 `APP_TEST_DJI_MOTOR_ENABLED` 控制；默认值为 `0`（2026-10-16 起），默认固件不会在 CAN1 上注册电机、也不发 0x200。启用测试前必须将电机架空或可靠固定；它与 CAN 恢复测试不能同时打开（文件内 `#error`）。
-
-基于 `DjiMotor`/`DjiMotorBus` 新框架的实测结果为：测试任务通过，收到并成功分发 `0x202` 反馈 20330 帧、忽略 0 帧，峰值转速 3532 rpm，CAN 发送错误计数、接收错误计数和 Bus-Off 均为 0；测试结束后内部 `0x200` 帧四个输出槽位均为零。可在 Live Watch 中查看 `dji_motor_task_*` 和 `dji_motor_test_*` 诊断量。
-
-若 `can1_statu` 从 `Status::OK` 变为持续 `Status::FULL`，应先检查错误计数和 Bus-Off；本次故障由 CAN 连接线序不正确导致，自动重发最终占满发送 FIFO，而不是任务未执行或软件发送缓冲区本身太小。
-
-### 因为底层驱动涉及cpp，解决方法：
-
-严格在每一个.c .cpp中写接口转接文档，每个不能调用的东西都进行接口转接。
-
-写接口转接文档，发现在嵌入式中，只需要给`main.c`进行转接，使用`api_main`来当作提取出来的main即可。这样写的中断回调 初始化 while循环都没啥问题，FreeRTOS也是这样，只需要`extern "C"` 就可以了
-
-HAL库也早就写好了cpp调用c的`extern "C"`内容
-
-作为c调用cpp的转接cpp文件的就写`api_xxxx.cpp`和`api_xxx.h` 作为区分 用**`h`**
-
-正常cpp文件为：`xxx_yyyy.cpp` 和 `xxx_yyyy.hpp` 作为区分 用**`hpp`**
-
-`xxx为 app bsp alg`
-
-## 修改的文件
-
-### CMakeList
-
-为了更方便的添加.c .cpp文件 在User文件夹内添加了一个子文件夹的CMakeLists.txt，这些可以实现一键导入User的库
-
-现在只需要在主CMakeLists.txt的最后一行添加：
-
-```bash
-##### User #####
-add_subdirectory(User)
-
-# Add stm32cubemx to User_lib
-target_link_libraries(User_lib PRIVATE stm32cubemx)
-
-# Add TinyUSB include to Userlib
-target_include_directories(User_lib PUBLIC
-    ${TINYUSB_DIR}/src
-)
-
-# Add User_lib to main
-target_link_libraries(${CMAKE_PROJECT_NAME}
-    User_lib
-
-)
-
-
-# 结尾部分
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
-
-##### User #####
-```
-
-关于tinyusb，在user后面添加此内容
-
-```bash
-
-### Add TinyUSB sources ###
-set(TINYUSB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tinyusb-0.20.0)
-include(${TINYUSB_DIR}/src/CMakeLists.txt)
-tinyusb_target_add(${CMAKE_PROJECT_NAME})
-
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE
-    ${TINYUSB_DIR}/src/portable/synopsys/dwc2/dcd_dwc2.c
-    ${TINYUSB_DIR}/src/portable/synopsys/dwc2/dwc2_common.c
-)
-
-# Add TinyUSB include to main
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    ${TINYUSB_DIR}/src
-)
-
-# Add project symbols (macros) <= tinyusb
-target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined symbols
-    CFG_TUSB_MCU=OPT_MCU_STM32H7
-    CFG_TUSB_OS=OPT_OS_FREERTOS
-)
-
-### Add TinyUSB sources ###
-```
-
-以及在最后一行，添加此内容，增加了对浮点数打印的支持
-
-```bash
-target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)
-```
-
-### .ld文件
-
-为了DMA传输，把需要用到DMA的东西的存储，换到了DTCM之外
-
-```c
-__attribute__((section(".dma_buffer"))) 使用这一个缀修饰
-```
-
-修改ld文件的内容如下，中文注释之间为添加内容，多余的内容是定位用的
-
-```c
-  .fini_array (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
-  {
-    . = ALIGN(4);
-    PROVIDE_HIDDEN (__fini_array_start = .);
-    KEEP (*(SORT(.fini_array.*)))
-    KEEP (*(.fini_array*))
-    PROVIDE_HIDDEN (__fini_array_end = .);
-    . = ALIGN(4);
-  } >FLASH
-
- /* === 用户为dma传输配置的内存地址 === */
-
-  .dma_buffer (NOLOAD) :
-  {
-    . = ALIGN(32);
-    _sdma_buffer = .;
-    *(.dma_buffer)
-    *(.dma_buffer*)
-    . = ALIGN(32);
-    _edma_buffer = .;
-  } >RAM_D1
-
-  /* === 用户dma相关配置结束 === */
-
-  /* 故障现场记录：NOLOAD 且不在 .bss 范围内，启动代码不清零，复位后仍保留上一次的内容（掉电丢失） */
-  .noinit (NOLOAD) :
-  {
-    . = ALIGN(4);
-    *(.noinit)
-    *(.noinit*)
-    . = ALIGN(4);
-  } >RAM_D1
-
-  /* used by the startup to initialize data */
-  _sidata = LOADADDR(.data);
-
-  /* Initialized data sections goes into RAM, load LMA copy after code */
-  .data :
-  {
-    . = ALIGN(4);
-    _sdata = .;        /* create a global symbol at data start */
-    *(.data)           /* .data sections */
-    *(.data*)          /* .data* sections */
-    *(.RamFunc)        /* .RamFunc sections */
-    *(.RamFunc*)       /* .RamFunc* sections */
-
-    . = ALIGN(4);
-  } >DTCMRAM AT> FLASH
-
-```
-
-### 让clangd 不报头文件未使用的错误（间接使用 clangd识别不出来）
-
-使用： 在include头文件后面添加
-
-`// IWYU pragma: keep`
-
-可以规避 `Included header XXX.h is not used directly (fixes available)` 这个错误
-
-## 技术细节
-### Algorithm 算法
-### Bsp 驱动
-### Device 设备
-#### DM_Motor 达妙电机驱动
-
-> ⚠️ 当前状态：`User/Device/dm_motor.cpp` 只有一行 `#include`，下面的接口只有声明、没有实现（实现在提交 `ea9c6ed` 中删除后未重写）；打开 `APP_TEST_DM_MOTOR_ENABLED` 会编译失败。
-
-##### 使用接口
-+ **初始化** 
-  - 先声明`DmMotor<电机型号> 电机名称(can_item, esc_id, master_id, mode);`
-  - 然后调用`.init()`
-+ **数据只读接口**
-  - `.data()` 获取电机的运动学数据，以弧度值为单位
-  - `.feedback()` 达妙电机的原始反馈数据
-  - `.online().isOnline()` 电机在线情况检查
-  - `.lvbo_data()` 观测器获得的运动学数据，以弧度值为单位。默认无观测器配置
-  - `.drive_state()` 查询电机错误码
-  - `.enable_state()` 查询电机使能状态
-  - `.status()` 查询最近一次的电机状态
-+ **功能接口**
-  - `.set_mit_target(position, velocity, kp, kd, torque)` 设置MIT模式下的控制目标
-  - `.set_position_velocity_target(position, velocity_limit)` 设置位置-速度模式下的控制目标
-  - `.set_velocity_target(velocity)` 设置速度模式下的控制目标
-  - `.set_position_torque_target(position, velocity_limit, current_limit_ratio)` 设置力位混控模式下的控制目标
-  - `.enable()` 使能电机
-  - `.disable()` 失能电机
-  - `.clear_error()` 清除电机错误位
-  - `.save_current_position_as_zero()` 以当前位置保存为位置零点
-##### 技术原理
-电机对象持有[电机发送管理对象](#motor_tx_manager)`_tx_endpoint`
-##### 实现细节
-### Module 模块
-### Protocol 协议
-### Service 服务
-#### motor_tx_manager
-#### online_check
+- 编码规范：`docs/编码规范.md`（命名、注释、`Config` 构造模式、分层、断言与初始化失败）。格式由 `.clang-format` 固定，手动执行。
+- C 调 C++ 只通过 `api_main.h` 转接一次（`main.c` / `freertos.c` → `all_init()` / 任务入口），HAL 与 FreeRTOS 回调用 `extern "C"`。
+- 间接包含的头文件行尾加 `// IWYU pragma: keep`，避免 clangd 误报。
+- 很多文件是 CRLF 行尾：修改时保持原行尾，提交前用 `git diff --numstat` 与 `git diff --ignore-cr-at-eol --numstat` 对比，确认没有整文件的行尾改动。
+- CubeMX 重新生成后检查链接脚本 `STM32H723xG_flash.ld`：会被默认内容覆盖，丢掉 `.dma_buffer` / `.noinit`，必须还原。
