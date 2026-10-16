@@ -1,6 +1,8 @@
 #include "can_tx_node.hpp"
 #include "bsp_cfg.hpp"
 
+#include <string.h>
+
 extern "C" void can_tx_task(void *argument)
 {
   (void)argument;
@@ -30,6 +32,20 @@ extern "C" void can_tx_task(void *argument)
       {
         if (osMutexAcquire(node->bufferMutex, pdMS_TO_TICKS(1U)) != osOK)
           continue;
+        // 指令有效期：超过 CMD_EXPIRE_MS 没被 filldata() 刷新的槽位清零，
+        // 避免控制任务卡死后保底心跳一直重发最后一次电流
+        const TickType_t now = xTaskGetTickCount();
+        for (uint8_t slot = 0; slot < node->division; ++slot)
+        {
+          const uint8_t mask = static_cast<uint8_t>(1U << slot);
+          if ((node->bufferRegister & mask) != 0U && (node->bufferExpired & mask) == 0U &&
+              now - node->bufferFillTick[slot] >= pdMS_TO_TICKS(CanTxNode::CMD_EXPIRE_MS))
+          {
+            memset(node->txBuffer.data + slot * 8U / node->division, 0, 8U / node->division);
+            node->bufferExpired |= mask;
+            ++node->expiredCount;
+          }
+        }
         const bool ready = node->bufferRegister != 0U && node->bufferUnsend == node->bufferRegister;
         const bool due = xTaskGetTickCount() - node->last_send_tick >= pdMS_TO_TICKS(5U);
         if ((ready || due) && can->send(node->txBuffer.std_id, node->txBuffer.data) == Status::OK)

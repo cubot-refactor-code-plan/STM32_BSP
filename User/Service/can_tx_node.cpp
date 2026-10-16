@@ -16,7 +16,10 @@ CanTxNode::CanTxNode(uint32_t can_id, uint8_t division) :
   bufferMutex_Attr {},
   _registered(false),
   next(nullptr),
-  last_send_tick(0)
+  last_send_tick(0),
+  bufferFillTick {},
+  bufferExpired(0xFFU), // 还没写过的槽位视为已过期：数据本来就是 0，不必再清，也不计数
+  expiredCount(0)
 {
   if ((osEventFlagsGet(sysEvent) & SYS_FLAG_RUNNING_BIT) != 0) // 只允许在初始化期使用
   {
@@ -210,6 +213,8 @@ Status CanTxNode::filldata(uint8_t data[], uint8_t slot)
   }
   memcpy(txBuffer.data + slot * 8 / division, data, 8 / division);
   bufferUnsend |= (1U << slot);
+  bufferFillTick[slot] = xTaskGetTickCount();          // 指令有效期从这一刻重新计时
+  bufferExpired &= static_cast<uint8_t>(~(1U << slot));
   osMutexRelease(bufferMutex);
 
   return Status::OK;
