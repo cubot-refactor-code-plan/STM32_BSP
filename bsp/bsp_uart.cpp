@@ -35,6 +35,22 @@ TickType_t ms_to_ticks(uint32_t ms)
 }
 
 /**
+ * @brief 地址能否被 DMA1 / DMA2 访问
+ *
+ * @note STM32H7 的 ITCM（0x0000_0000 起）与 DTCM（0x2000_0000 起，到 AXI SRAM 0x2400_0000 之前）
+ *       只连到 CPU 与 MDMA，DMA1 / DMA2 访问会出传输错误，串口收发静默失效。CubeMX 默认把 .bss
+ *       放在 DTCM，所以 BspUart 实例必须加 __attribute__((section(".dma_buffer")))，并且链接脚本里
+ *       .dma_buffer 要落在 RAM_D1 / D2 / D3 等 DMA 可达的 SRAM。
+ */
+bool dma_reachable(const void *addr)
+{
+  const uintptr_t a = reinterpret_cast<uintptr_t>(addr);
+  const bool itcm = a < 0x08000000U;
+  const bool dtcm = a >= 0x20000000U && a < 0x24000000U;
+  return !itcm && !dtcm;
+}
+
+/**
  * @brief 查本工程 8 路串口对应的 NVIC 中断号；不认识的实例返回 false
  *
  * @note rx_recover() 要在任务里做「中止 → 重新启动」，期间必须挡住本串口的中断：
@@ -243,6 +259,14 @@ Status BspUart<BUFFER_SIZE>::init()
 {
   // 句柄非法：后续所有 HAL 调用都不可用，提前拒绝（与 bsp_can::init() 一致）
   if (_huart == nullptr)
+  {
+    return Status::BAD_ARG;
+  }
+
+  // 收发缓冲是对象成员，DMA 直接读写它们：实例不在 DMA 可达的内存里（忘了放进 .dma_buffer，
+  // 或链接脚本把 .dma_buffer 放进了 DTCM）就拒绝，免得运行时静默收发不了
+  if ((_huart->hdmarx != nullptr || _huart->hdmatx != nullptr) &&
+      (!dma_reachable(_rx_dma_buffer) || !dma_reachable(_tx_dma_buffer)))
   {
     return Status::BAD_ARG;
   }

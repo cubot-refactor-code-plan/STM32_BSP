@@ -201,11 +201,12 @@ public:
   /**
    * @brief 创建流缓冲区和两把锁，然后启动 IDLE 接收
    *
-   * @note 必须在调度器启动之后调用，因为里面要创建 FreeRTOS 对象。
+   * @note 在初始化阶段调用（cubot_init() 之后、cubot_start() 之前；调度器启动前也可以创建 FreeRTOS 对象）。
    *       可以重复调用：开头会先把上一次的资源释放掉。
    *
    * @return OK=成功；IO_ERROR=资源创建失败或接收没能启动；
-   *         BAD_ARG=句柄为空或已被另一个实例登记；FULL=串口登记表已满
+   *         BAD_ARG=句柄为空、已被另一个实例登记，或实例不在 DMA 可达的内存里（没放进 .dma_buffer）；
+   *         FULL=串口登记表已满
    * @note 在打开接收中断之前把本实例登记进 BspUartBase 的登记表，HAL 回调靠它找到本实例。
    */
   Status init();

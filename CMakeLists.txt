@@ -62,6 +62,36 @@ else()
     message(STATUS "cubot_bsp: 没找到 cubot_config.h，全部用默认值（见 service/cubot_defaults.hpp，模板 templates/cubot_config.h）")
 endif()
 
+# 链接脚本检查：BspUart 实例要进 .dma_buffer、fault_record 要进 .noinit。CubeMX 新建工程的链接脚本
+# 没有这两段，缺了链接器只会把它们当孤儿段随便放（可能落进 DMA 访问不到的 DTCM），运行时才静默出错。
+# 所以在配置阶段检查，并把链接脚本登记为配置依赖：它一变（手改、换模板、CubeMX 重新生成），下次构建就重新检查。
+# 只认 CMAKE_EXE_LINKER_FLAGS 里的 -T（CubeMX 生成的工具链文件就是这样写的），找不到就跳过。
+string(REGEX MATCH "-T[ \t]*\"([^\"]+)\"" _cubot_ld_match "${CMAKE_EXE_LINKER_FLAGS}")
+set(_cubot_ld "${CMAKE_MATCH_1}")
+if(NOT _cubot_ld)
+    string(REGEX MATCH "-T[ \t]*([^ \t\"]+)" _cubot_ld_match "${CMAKE_EXE_LINKER_FLAGS}")
+    set(_cubot_ld "${CMAKE_MATCH_1}")
+endif()
+if(_cubot_ld AND EXISTS "${_cubot_ld}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_cubot_ld}")
+    file(READ "${_cubot_ld}" _cubot_ld_text)
+    set(_cubot_ld_missing "")
+    foreach(_cubot_sec dma_buffer noinit)
+        if(NOT _cubot_ld_text MATCHES "\\.${_cubot_sec}[ \t]*(\\(NOLOAD\\))?[ \t\r\n]*:")
+            list(APPEND _cubot_ld_missing ".${_cubot_sec}")
+        endif()
+    endforeach()
+    if(_cubot_ld_missing)
+        list(JOIN _cubot_ld_missing "、" _cubot_ld_missing)
+        message(FATAL_ERROR
+            "cubot_bsp: 链接脚本 ${_cubot_ld} 缺少 ${_cubot_ld_missing} 段"
+            "。请把 ${CMAKE_CURRENT_SOURCE_DIR}/templates/linker_sections.ld 里的段加进去（放在 SECTIONS 里 .data 之前）。")
+    endif()
+    message(STATUS "cubot_bsp: 链接脚本检查通过（.dma_buffer、.noinit）：${_cubot_ld}")
+else()
+    message(STATUS "cubot_bsp: CMAKE_EXE_LINKER_FLAGS 里没找到 -T 链接脚本，跳过 .dma_buffer / .noinit 检查")
+endif()
+
 set_target_properties(cubot_bsp PROPERTIES
     CXX_STANDARD 11
     CXX_STANDARD_REQUIRED ON
