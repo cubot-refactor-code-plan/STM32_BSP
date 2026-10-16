@@ -12,9 +12,6 @@
 /* Device */
 #include "device_cfg.hpp"
 
-/* Protocol */
-#include "protocol_cfg.hpp"
-
 /* Service */
 #include "can_tx_node.hpp"
 #include "status.hpp"
@@ -56,8 +53,7 @@ volatile uint32_t can1_bus_off              = 0;
  *         1. 统一创建信号量（必须在创建任何任务之前！）
  *         2. bsp_init()     —— 外设 BSP 初始化
  *         3. device_init()  —— 设备层初始化
- *         4. protocol_init()—— 协议层初始化
- *         5. ...
+ *         4. ...
  */
 void all_init()
 {
@@ -77,9 +73,6 @@ void all_init()
 
   /* 初始化设备 */
   device_init();
-
-  /* 初始化协议层 */
-  protocol_init();
 
 #if APP_TEST_DJI_MOTOR_ENABLED
   // 注册必须早于运行标志，接收任务等待初始化完成后开始轮询。

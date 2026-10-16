@@ -5,7 +5,7 @@
  * @version 0.3
  * @date 2026-09-10
  *
- * @todo 收上来的数据要交给应用层分发（app_message 或上层总线注册）
+ * @todo 收上来的数据要交给上层分发（按设备 / 协议注册）
  *
  * @copyright Copyright (c) 2026
  *
