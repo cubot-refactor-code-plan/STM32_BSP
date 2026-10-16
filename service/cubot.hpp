@@ -21,33 +21,11 @@
  *              没有任何发送节点时自行退出。
  *          它们遍历 BspCan / BspUartBase 的实例登记表，不引用任何板级实例。
  *
- * @note 任务优先级与栈深可在包含本文件之前用同名宏覆盖（阶段 D 收进 cubot_config.h）。
+ * @note 任务优先级与栈深等可配置项见 cubot_defaults.hpp，在宿主工程的 cubot_config.h 里覆盖。
  */
 
 #ifndef __CUBOT_HPP__
 #define __CUBOT_HPP__
-
-#include "FreeRTOS.h" // IWYU pragma: keep (tskIDLE_PRIORITY)
-
-/** @brief 系统维护任务优先级：高于业务任务，低于 CAN 收发任务 */
-#ifndef CUBOT_SYS_TASK_PRIORITY
-#  define CUBOT_SYS_TASK_PRIORITY (tskIDLE_PRIORITY + 7)
-#endif
-
-/** @brief 系统维护任务栈深（字） */
-#ifndef CUBOT_SYS_TASK_STACK
-#  define CUBOT_SYS_TASK_STACK 256
-#endif
-
-/** @brief CAN 收 / 发任务优先级：最高，1 kHz 节拍内必须跑完 */
-#ifndef CUBOT_CAN_TASK_PRIORITY
-#  define CUBOT_CAN_TASK_PRIORITY (tskIDLE_PRIORITY + 8)
-#endif
-
-/** @brief CAN 收 / 发任务栈深（字）：接收节点回调在 cubot_can_rx_task 里同步执行 */
-#ifndef CUBOT_CAN_TASK_STACK
-#  define CUBOT_CAN_TASK_STACK 512
-#endif
 
 #ifdef __cplusplus
 extern "C"

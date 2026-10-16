@@ -55,7 +55,7 @@ public:
  * @param context 回调对象指针，可为空，必须保持有效。
  * @param id_type FDCAN_STANDARD_ID（默认）或 FDCAN_EXTENDED_ID。
  * @return 成功返回节点；失败返回 nullptr，参数/冲突/资源错误记入系统初始化错误。
- * @note 必须在 cubot_init()（内含 SysFlagInit()）之后、cubot_start() 之前的初始化阶段调用，最多 50 个节点。
+ * @note 必须在 cubot_init()（内含 SysFlagInit()）之后、cubot_start() 之前的初始化阶段调用；节点总数上限 CUBOT_CAN_RX_NODE_MAX（默认 50）。
  */
 CanRxNode *regist(BspCan &can_item, uint32_t can_id, CanRxNode::Callback callback, void *context = nullptr, uint32_t id_type = FDCAN_STANDARD_ID);
 

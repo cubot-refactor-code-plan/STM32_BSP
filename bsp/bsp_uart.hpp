@@ -57,7 +57,8 @@
 #include "stream_buffer.h"
 #include "task.h"  // IWYU pragma: keep
 
-#include "status.hpp" // 统一状态码
+#include "cubot_defaults.hpp" // 可配置项（用户 cubot_config.h + 默认值）
+#include "status.hpp"         // 统一状态码
 
 
 /**
@@ -134,8 +135,8 @@ protected:
   UART_HandleTypeDef *_huart; ///< UART 句柄
 
 private:
-  /** @brief 登记表容量：STM32H7 最多 11 路 U(S)ART（含 LPUART1），留 1 个余量 */
-  static constexpr uint32_t MAX_INSTANCES = 12U;
+  /** @brief 登记表容量：CUBOT_UART_MAX_INSTANCES（默认 12：STM32H7 最多 11 路 U(S)ART 含 LPUART1，留 1 个余量） */
+  static constexpr uint32_t MAX_INSTANCES = CUBOT_UART_MAX_INSTANCES;
 
   static BspUartBase *_registry[MAX_INSTANCES]; ///< 已登记实例
   static uint32_t     _registry_num;            ///< 已登记数量

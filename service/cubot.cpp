@@ -1,8 +1,13 @@
 #include "cubot.hpp"
+#include "cubot_defaults.hpp"
 
 #include "stm32h7xx_hal.h" // IWYU pragma: keep（HAL 模块开关）
 #include "status.hpp"
+#include "FreeRTOS.h" // IWYU pragma: keep
 #include "task.h"
+
+static_assert(CUBOT_SYS_TASK_PRIORITY < configMAX_PRIORITIES && CUBOT_CAN_TASK_PRIORITY < configMAX_PRIORITIES,
+              "cubot_config.h: 库任务优先级必须小于 configMAX_PRIORITIES");
 
 
 // ---------------- 库入口 ----------------

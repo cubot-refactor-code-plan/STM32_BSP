@@ -42,7 +42,8 @@
 #include "message_buffer.h"
 #include "task.h"
 
-#include "status.hpp" // 统一状态码
+#include "cubot_defaults.hpp" // 可配置项（用户 cubot_config.h + 默认值）
+#include "status.hpp"         // 统一状态码
 
 
 class CanRxNode;
@@ -209,8 +210,8 @@ private:
    */
   Status register_self();
 
-  /** @brief 登记表容量：STM32H7 最多 FDCAN1~3 */
-  static constexpr uint32_t MAX_INSTANCES = 3U;
+  /** @brief 登记表容量：CUBOT_CAN_MAX_INSTANCES（默认 3，STM32H7 最多 FDCAN1~3） */
+  static constexpr uint32_t MAX_INSTANCES = CUBOT_CAN_MAX_INSTANCES;
 
   static BspCan  *_registry[MAX_INSTANCES]; ///< 已登记实例（只在初始化阶段写，中断与任务只读）
   static uint32_t _registry_num;            ///< 已登记数量

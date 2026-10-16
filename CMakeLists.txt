@@ -46,6 +46,22 @@ target_include_directories(cubot_bsp PUBLIC
 # HAL / CMSIS / FreeRTOS 的头文件与宏都来自 CubeMX 的 stm32cubemx（INTERFACE）目标
 target_link_libraries(cubot_bsp PUBLIC stm32cubemx)
 
+# 用户配置 cubot_config.h：库头文件用 __has_include 在包含路径上找它（见 service/cubot_defaults.hpp）。
+# 必须放在 stm32cubemx 的包含目录里（推荐 Core/Inc/）：库和用户代码都经由 stm32cubemx 取包含路径，
+# 两边看到的是同一份配置；只放在用户自己目标的包含目录里，库会看不到，两边取值不一致。
+get_target_property(_cubot_mx_inc stm32cubemx INTERFACE_INCLUDE_DIRECTORIES)
+set(_cubot_cfg "")
+foreach(_cubot_dir IN LISTS _cubot_mx_inc)
+    if(NOT _cubot_cfg AND EXISTS "${_cubot_dir}/cubot_config.h")
+        set(_cubot_cfg "${_cubot_dir}/cubot_config.h")
+    endif()
+endforeach()
+if(_cubot_cfg)
+    message(STATUS "cubot_bsp: 使用配置 ${_cubot_cfg}")
+else()
+    message(STATUS "cubot_bsp: 没找到 cubot_config.h，全部用默认值（见 service/cubot_defaults.hpp，模板 templates/cubot_config.h）")
+endif()
+
 set_target_properties(cubot_bsp PROPERTIES
     CXX_STANDARD 11
     CXX_STANDARD_REQUIRED ON

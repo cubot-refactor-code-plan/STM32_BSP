@@ -405,17 +405,17 @@ Status BspUart<BUFFER_SIZE>::send(const uint8_t *data, size_t size, uint32_t tim
  * @brief 格式化输出（printf 风格，超长自动截断；仅任务上下文）
  *
  * @note 实例级的 _printf_buffer 由 _printf_lock 保护，多任务并发调用安全。
- *       入队等待固定为 10 ms，不随调用方传入，避免发送卡住时
+ *       入队等待固定为 CUBOT_UART_PRINTF_TIMEOUT_MS（默认 10 ms），不随调用方传入，避免发送卡住时
  *       把调用任务长时间挂起；未全部入队时返回 Status::TIMEOUT（已入队部分照常发出）。
  */
 template <size_t BUFFER_SIZE>
 Status BspUart<BUFFER_SIZE>::printf(const char *fmt, ...)
 {
   // 取锁等待上限 (ms)：避免某一个任务长期持有格式化缓冲
-  constexpr uint32_t PRINTF_LOCK_TIMEOUT_MS = 10U;
+  constexpr uint32_t PRINTF_LOCK_TIMEOUT_MS = CUBOT_UART_PRINTF_TIMEOUT_MS;
 
   // 入队等待上限 (ms)：发送卡住时不把调用任务无限挂住
-  constexpr uint32_t PRINTF_TX_TIMEOUT_MS = 10U;
+  constexpr uint32_t PRINTF_TX_TIMEOUT_MS = CUBOT_UART_PRINTF_TIMEOUT_MS;
 
   if (fmt == nullptr)
   {

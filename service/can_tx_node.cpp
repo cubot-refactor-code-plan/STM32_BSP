@@ -133,7 +133,7 @@ CanTxNode *regist(BspCan &can_item, uint32_t can_id, uint8_t division, uint8_t s
   }
 
   // 无则创建一个新的Node
-  if (CanTxNode::node_num >= 50U)
+  if (CanTxNode::node_num >= CUBOT_CAN_TX_NODE_MAX)
   {
     SysInitError(Status::FULL);
     return nullptr;

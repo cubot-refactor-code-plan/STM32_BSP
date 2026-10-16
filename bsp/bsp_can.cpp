@@ -160,13 +160,13 @@ Status BspCan::init()
   if (reg != Status::OK)
     return reg; // BAD_ARG：句柄为空或已被别的实例占用；FULL：登记表满
 
-  // 创建接收消息缓冲区
-  _rx_message_buffer = xMessageBufferCreate((sizeof(CanRxMsg) + 4) * 8);
+  // 创建接收消息缓冲区（每条消息另占 4 字节长度头；深度见 cubot_defaults.hpp）
+  _rx_message_buffer = xMessageBufferCreate((sizeof(CanRxMsg) + 4) * CUBOT_CAN_RX_QUEUE_FRAMES);
   if (_rx_message_buffer == nullptr)
     return Status::IO_ERROR;
 
   // 分发任务写入、receive() 的唯一消费者读取。
-  _rx_return_buffer = xMessageBufferCreate((sizeof(CanRxMsg) + 4) * 8);
+  _rx_return_buffer = xMessageBufferCreate((sizeof(CanRxMsg) + 4) * CUBOT_CAN_RX_RETURN_FRAMES);
   if (_rx_return_buffer == nullptr)
   {
     vMessageBufferDelete(_rx_message_buffer);
@@ -175,7 +175,7 @@ Status BspCan::init()
   }
 
   // 创建发送消息缓冲区
-  _tx_message_buffer = xMessageBufferCreate((sizeof(CanTxMsg) + 4) * 8);
+  _tx_message_buffer = xMessageBufferCreate((sizeof(CanTxMsg) + 4) * CUBOT_CAN_TX_QUEUE_FRAMES);
   if (_tx_message_buffer == nullptr)
   {
     vMessageBufferDelete(_rx_message_buffer);

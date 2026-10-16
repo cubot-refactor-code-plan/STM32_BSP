@@ -36,12 +36,13 @@ private:
   /**
    * @brief 控制指令有效期 (ms)：某个槽位超过这么久没被 filldata() 刷新，发送任务就把它清零
    *
-   * @note cubot_can_tx_task 每 5 ms 保底重发一次整帧；没有有效期的话，控制任务卡死 / 被删后，
-   *       电机会一直按最后一次写入的电流转。100 ms ≈ 20 次保底心跳，能容忍控制任务偶发卡顿，
-   *       又能在 0.1 s 内让电机停下（2026-10-16 开发者定）。
+   * @note cubot_can_tx_task 每 CUBOT_CAN_TX_HEARTBEAT_MS（默认 5 ms）保底重发一次整帧；没有有效期的话，
+   *       控制任务卡死 / 被删后，电机会一直按最后一次写入的电流转。默认 100 ms ≈ 20 次保底心跳，
+   *       能容忍控制任务偶发卡顿，又能在 0.1 s 内让电机停下（2026-10-16 开发者定）；
+   *       在 cubot_config.h 里用 CUBOT_CAN_CMD_EXPIRE_MS 修改。
    * @note 只清超时的那个槽位，同一帧里其他电机不受影响。
    */
-  static constexpr uint32_t CMD_EXPIRE_MS = 100U;
+  static constexpr uint32_t CMD_EXPIRE_MS = CUBOT_CAN_CMD_EXPIRE_MS;
 
   TickType_t bufferFillTick[8]; ///< 各槽位最近一次 filldata() 的 tick（节点锁内读写）
   uint8_t    bufferExpired;     ///< 已因超时清零的槽位（置位后不再重复清零；filldata() 清除对应位）

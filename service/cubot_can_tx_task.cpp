@@ -54,7 +54,7 @@ extern "C" void cubot_can_tx_task(void *argument)
           }
         }
         const bool ready = node->bufferRegister != 0U && node->bufferUnsend == node->bufferRegister;
-        const bool due = xTaskGetTickCount() - node->last_send_tick >= pdMS_TO_TICKS(5U);
+        const bool due = xTaskGetTickCount() - node->last_send_tick >= pdMS_TO_TICKS(CUBOT_CAN_TX_HEARTBEAT_MS);
         if ((ready || due) && can->send(node->txBuffer.std_id, node->txBuffer.data) == Status::OK)
         {
           node->bufferUnsend = 0;
