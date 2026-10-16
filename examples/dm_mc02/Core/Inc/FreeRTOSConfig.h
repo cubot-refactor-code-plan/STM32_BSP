@@ -158,8 +158,8 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 /* Normal assert() semantics without relying on the provision of an assert.h
 header file. */
 /* USER CODE BEGIN 1 */
-/* 故障现场记录（实现见 User/Service/fault_record.cpp）：断言失败时先记下文件名与行号再停机。
-   内核源码所在的库目标看不到 User 的头文件，所以原型直接在这里声明。 */
+/* 故障现场记录（实现见 cubot_bsp 的 service/fault_record.cpp）：断言失败时先记下文件名与行号再停机。
+   内核源码所在的目标看不到库的头文件，所以原型直接在这里声明（模板 templates/FreeRTOSConfig_user_code.h）。 */
 #if defined(__ICCARM__) || defined(__CC_ARM) || defined(__GNUC__)
 #ifdef __cplusplus
 extern "C" {
