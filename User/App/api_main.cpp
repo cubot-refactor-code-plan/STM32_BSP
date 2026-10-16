@@ -21,25 +21,6 @@
 #include "app_test.hpp"
 
 
-/* ==================== 全局变量定义 ==================== */
-
-/* C620/M3508 CAN1 实机测试诊断量（可在调试器 Live Watch 中查看） */
-volatile Status   can1_statu                = Status::NOT_INIT;
-volatile uint32_t can1_tx_ok_count          = 0;
-volatile uint32_t can1_tx_full_count        = 0;
-volatile uint32_t can1_rx_count             = 0;
-volatile uint32_t can1_feedback_202_count   = 0;
-volatile uint32_t can1_last_rx_id           = 0;
-volatile int16_t  c620_speed_rpm            = 0;
-volatile uint16_t c620_peak_abs_speed_rpm   = 0;
-volatile int16_t  c620_given_current        = 0;
-volatile uint8_t  c620_temperature          = 0;
-volatile uint32_t can1_last_error_code      = 0;
-volatile uint32_t can1_tx_error_count       = 0;
-volatile uint32_t can1_rx_error_count       = 0;
-volatile uint32_t can1_bus_off              = 0;
-
-
 /**
  * @brief FreeRTOS后的相关初始化
  *
@@ -63,11 +44,6 @@ void all_init()
   /* 初始化设备 */
   device_init();
 
-#if APP_TEST_DJI_MOTOR_ENABLED
-  // 注册必须早于运行标志，接收任务等待初始化完成后开始轮询。
-  dji_motor_test_init();
-#endif
-
 #if APP_TEST_CAN_RECOVERY_ENABLED
   can_recovery_test_init();
 #endif
@@ -87,24 +63,6 @@ void all_init()
                            256,
                            NULL,
                            tskIDLE_PRIORITY + 3,
-                           NULL) == pdPASS);
-#endif
-
-#if APP_TEST_DJI_MOTOR_ENABLED
-  configASSERT(xTaskCreate(dji_motor_test_task,
-                           "motor_test",
-                           256,
-                           NULL,
-                           tskIDLE_PRIORITY + 5,
-                           NULL) == pdPASS);
-#endif
-
-#if APP_TEST_DM_MOTOR_ENABLED
-  configASSERT(xTaskCreate(dm_motor_test_task,
-                           "dm_test",
-                           512,
-                           NULL,
-                           tskIDLE_PRIORITY + 5,
                            NULL) == pdPASS);
 #endif
 
@@ -130,10 +88,6 @@ extern "C" void StartDefaultTask(void *argument)
 
   for (;;)
   {
-#if APP_TEST_UART_TRANSPORT_ENABLED
-    uart_transport_test_step(); // USART1 收发测试：回显 + 周期心跳
-#endif
-
     osDelay(1);
   }
 }

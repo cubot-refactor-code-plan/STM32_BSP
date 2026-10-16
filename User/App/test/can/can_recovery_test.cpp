@@ -4,9 +4,6 @@
 #include "task.h"
 
 #if APP_TEST_CAN_RECOVERY_ENABLED
-#if APP_TEST_DJI_MOTOR_ENABLED
-#error "CAN recovery test and motor motion test cannot share CAN1"
-#endif
 
 // CAN1/C620 ID2，所有控制帧均为零。arm=1 自动故障注入，arm=2 等待物理断连。
 volatile uint32_t can_recovery_test_arm = 0;
