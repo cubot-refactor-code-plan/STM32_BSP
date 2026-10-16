@@ -134,15 +134,6 @@ void all_init()
                            NULL) == pdPASS);
 #endif
 
-#if APP_TEST_QSPI_FLASH_ENABLED
-  configASSERT(xTaskCreate(qspi_flash_test_task,
-                           "qspi_test",
-                           512,
-                           NULL,
-                           tskIDLE_PRIORITY + 4,
-                           NULL) == pdPASS);
-#endif
-
   // 有初始化失败记录（各注册函数调过 SysInitError）就在这里停机，fault_record 记下本行
   configASSERT(SysCompleteInit() == Status::OK);
 

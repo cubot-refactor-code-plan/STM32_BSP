@@ -60,9 +60,7 @@ RAM_D1 (xrw)      : ORIGIN = 0x24000000, LENGTH = 320K
 RAM_D2 (xrw)      : ORIGIN = 0x30000000, LENGTH = 32K
 RAM_D3 (xrw)      : ORIGIN = 0x38000000, LENGTH = 16K
 ITCMRAM (xrw)      : ORIGIN = 0x00000000, LENGTH = 64K
-/* Product constraint: fail the link if the internal image exceeds 128 KiB. */
-FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 128K
-OSPI2 (rx)      : ORIGIN = 0x70000000, LENGTH = 8M
+FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 1024K
 }
 
 /* Highest address of the user mode stack */
@@ -108,20 +106,6 @@ SECTIONS
     *(.rodata*)        /* .rodata* sections (constants, strings, etc.) */
     . = ALIGN(4);
   } >FLASH
-
-  /* XIP 测试段：运行地址在 OCTOSPI2，测试镜像暂存于内部 Flash。 */
-  .qspi_text 0x70100000 :
-  {
-    . = ALIGN(4);
-    __qspi_text_start__ = .;
-    KEEP(*(.qspi_text))
-    KEEP(*(.qspi_text*))
-    . = ALIGN(4);
-    __qspi_text_end__ = .;
-  } >OSPI2 AT>FLASH
-
-  __qspi_text_load_start__ = LOADADDR(.qspi_text);
-  __qspi_text_load_end__ = LOADADDR(.qspi_text) + SIZEOF(.qspi_text);
 
 
   .ARM.extab (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */

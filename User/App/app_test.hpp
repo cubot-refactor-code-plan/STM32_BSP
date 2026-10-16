@@ -31,9 +31,6 @@
 /** @brief 启用 USART1 串口收发实机测试（回显 + 周期心跳）；设为 0 可停用。 */
 #define APP_TEST_UART_TRANSPORT_ENABLED 0
 
-/** @brief 编译并创建 W25Q64JV 擦写、映射与 XIP 实机测试；完成后应设回 0。 */
-#define APP_TEST_QSPI_FLASH_ENABLED 0
-
 #ifdef __cplusplus
 extern "C"
 {
@@ -67,13 +64,6 @@ extern "C"
    * @warning 测试会临时切换电机模式，每种模式运行约 4 秒；结束后会失能并恢复原模式。
    */
   void dm_motor_test_task(void *argument);
-
-  /**
-   * @brief 板载 W25Q64JV 间接读写、Memory-Mapped 和 XIP 实机测试任务。
-   * @param argument 任务参数（未使用，NULL）。
-   * @warning 启用后会改写外置 Flash 最后两个扇区和 0x00100000 附近的 XIP 测试区。
-   */
-  void qspi_flash_test_task(void *argument);
 
   /**
    * @brief USART1 串口收发实机测试步骤，由 StartDefaultTask 的 1ms 循环调用。
