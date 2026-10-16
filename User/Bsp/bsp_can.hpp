@@ -152,6 +152,7 @@ public:
     volatile uint32_t recovery_successes = 0;
     volatile uint32_t tx_dropped = 0;
     volatile uint32_t rx_dropped = 0;
+    volatile uint32_t rx_len_drop = 0; ///< DLC > 8（FD 帧或经典帧 DLC 9~15）而被丢弃的帧数
     volatile uint32_t recovery_max_ticks = 0;
     volatile bool recovering = false;
   } diagnostics;

@@ -290,13 +290,30 @@ void BspCan::process_fifo0_isr()
     return;
 
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+  // HAL_FDCAN_GetRxMessage 按 DLC 查表拷贝 DLCtoBytes[] 个字节（DLC 9~15 → 12~64 字节），
+  // 而经典 CAN 允许 DLC 为 9~15（数据仍是 8 字节），CanRxMsg::data 只有 8 字节。
+  // 直接读进 rxMsg.data 会写穿中断栈：实测一帧 DLC=15 就让返回地址被帧数据覆盖、进 MemManage。
+  // 所以先读进 64 字节缓冲，只把 DLC ≤ 8 的帧拷进 CanRxMsg。
+  constexpr uint32_t CAN_RX_RAW_BYTES = 64U;
+  uint8_t            raw[CAN_RX_RAW_BYTES];
+
   // 新消息中断可能合并多帧；读取本次积压快照，避免只取一帧导致 FIFO 长期满载。
   const uint32_t pending = HAL_FDCAN_GetRxFifoFillLevel(_hfdcan, FDCAN_RX_FIFO0);
   for (uint32_t i = 0; i < pending; ++i)
   {
     CanRxMsg rxMsg = {};
-    if (HAL_FDCAN_GetRxMessage(_hfdcan, FDCAN_RX_FIFO0, &rxMsg.header, rxMsg.data) != HAL_OK)
+    if (HAL_FDCAN_GetRxMessage(_hfdcan, FDCAN_RX_FIFO0, &rxMsg.header, raw) != HAL_OK)
       break;
+
+    // 只支持 8 字节经典帧：DLC > 8 的帧丢弃并计数（帧已从硬件 FIFO 取出，不会堵住 FIFO）
+    if (rxMsg.header.DataLength > FDCAN_DLC_BYTES_8)
+    {
+      ++diagnostics.rx_len_drop;
+      continue;
+    }
+    memcpy(rxMsg.data, raw, sizeof(rxMsg.data));
+
     if (xMessageBufferSendFromISR(_rx_message_buffer, &rxMsg, sizeof(rxMsg),
                                   &xHigherPriorityTaskWoken) != sizeof(rxMsg))
       ++diagnostics.rx_dropped;
