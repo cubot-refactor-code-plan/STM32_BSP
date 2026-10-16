@@ -47,7 +47,7 @@ void uart_protocol_task_entry(void* argument)
   for (;;)
   {
     /* 1. 寻找帧头：先同步第一个包头 */
-    if (self->_uart_instance.receive(&header_buf[0], 1, nullptr, portMAX_DELAY) != Status::OK)
+    if (self->_uart_instance.receive(&header_buf[0], 1, portMAX_DELAY) != Status::OK)
     {
       continue;
     }
@@ -62,7 +62,7 @@ void uart_protocol_task_entry(void* argument)
 
     /* 2. 读取剩余的帧头部分 */
     size_t hdr_read = 0;
-    if (self->_uart_instance.receive(&header_buf[1], 3, &hdr_read, 100) != Status::OK || hdr_read < 3)
+    if (self->_uart_instance.receive(&header_buf[1], 3, 100, &hdr_read) != Status::OK || hdr_read < 3)
     {
       continue;
     }
@@ -88,7 +88,7 @@ void uart_protocol_task_entry(void* argument)
     /* 4. 批量读取后续内容 */
     uint8_t remaining_len = self->_rx_frame.len + 2;
     size_t  recv_len      = 0;
-    if (self->_uart_instance.receive(payload_buf, remaining_len, &recv_len, 100) != Status::OK || recv_len < remaining_len)
+    if (self->_uart_instance.receive(payload_buf, remaining_len, 100, &recv_len) != Status::OK || recv_len < remaining_len)
     {
       /* 数据接收不完整，跳过 */
       continue;
@@ -207,7 +207,7 @@ Status ProtocolUart::send(uint8_t cmd, uint8_t* data, uint8_t len)
   tx_buf[4 + len] = calculate_checksum(tx_buf, 4 + len);
   tx_buf[5 + len] = _tail;
 
-  return _uart_instance.send(tx_buf, 6 + len, nullptr, 10);
+  return _uart_instance.send(tx_buf, 6 + len, 10);
 }
 
 

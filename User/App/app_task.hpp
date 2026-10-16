@@ -26,7 +26,7 @@ extern "C"
   void task_menu(void *argument);
 
   /**
-   * @brief 系统级 1 kHz 维护任务，当前负责推进全部 Online 对象的离线计时
+   * @brief 系统级 1 kHz 维护任务：CAN Bus-Off 恢复、每 10 ms 一次的串口收发补救、推进全部 Online 对象的离线计时
    * @param argument 任务参数（未使用，NULL）
    * @note 由 all_init() 创建，不应由业务代码直接调用。
    */

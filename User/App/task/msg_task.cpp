@@ -12,7 +12,7 @@ extern "C" void msg_task_task1(void *arg)
   for (;;)
   {
     xSemaphoreTake(menu_sem[0], portMAX_DELAY);
-    bsp_uart1.send(buf, sizeof(buf), nullptr, 100);
+    bsp_uart1.send(buf, sizeof(buf), 100);
   }
 }
 
@@ -23,7 +23,7 @@ extern "C" void msg_task_task2(void *arg)
   for (;;)
   {
     xSemaphoreTake(menu_sem[1], portMAX_DELAY);
-    bsp_uart1.send(buf, sizeof(buf), nullptr, 100);
+    bsp_uart1.send(buf, sizeof(buf), 100);
   }
 }
 
@@ -34,6 +34,6 @@ extern "C" void msg_task_task3(void *arg)
   for (;;)
   {
     xSemaphoreTake(menu_sem[2], portMAX_DELAY);
-    bsp_uart1.send(buf, sizeof(buf), nullptr, 100);
+    bsp_uart1.send(buf, sizeof(buf), 100);
   }
 }

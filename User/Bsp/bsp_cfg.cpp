@@ -65,18 +65,19 @@ BspCan bsp_can3({&hfdcan3, "CAN3"});
  * @brief 全局实例化
  * @param 第一个串口句柄
  * @param 第二个是是否启用发送逻辑
+ * @param 第三个是波特率：只给发送侧算“一包发完要多久”、判 TX 卡死用，必须与 CubeMX（usart.c）一致
  * @note 这个 __attribute__((section(".dma_buffer"))) 是把他放到dtcm区域外，在.ld格式文件下实现的
  *
  */
-__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart1({&huart1, true});
-__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart3({&huart3, true});
-__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart4({&huart4, true});
+__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart1({&huart1, true, 115200U});
+__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart3({&huart3, true, 115200U});
+__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart4({&huart4, true, 115200U});
 ///< UART5 仅接收：CubeMX 未配 TX DMA，发送功能关闭（transmit_enable=false）
-__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart5({&huart5, false});
-__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart7({&huart7, true});
-__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart8({&huart8, true});
-__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart9({&huart9, true});
-__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart10({&huart10, true});
+__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart5({&huart5, false, 115200U});
+__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart7({&huart7, true, 921600U});
+__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart8({&huart8, true, 115200U});
+__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart9({&huart9, true, 115200U});
+__attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart10({&huart10, true, 921600U});
 
 
 /* ==================== GPIO 输出引脚 ==================== */

@@ -55,14 +55,14 @@ extern "C" void uart_transport_test_step(void)
 
   /* ---- 1. 非阻塞收：超时 0，没有数据立即返回 ---- */
   size_t rx_len = 0;
-  if (bsp_uart1.receive(rx_buf, sizeof(rx_buf), &rx_len, 0) == Status::OK && rx_len > 0)
+  if (bsp_uart1.receive(rx_buf, sizeof(rx_buf), 0, &rx_len) == Status::OK && rx_len > 0)
   {
     uart1_test_rx_bytes += rx_len;
     uart1_test_last_byte = rx_buf[rx_len - 1];
 
     /* ---- 2. 原样回显：PC 发什么就回什么 ---- */
     size_t tx_len = 0;
-    if (bsp_uart1.send(rx_buf, rx_len, &tx_len, 0) == Status::OK)
+    if (bsp_uart1.send(rx_buf, rx_len, 0, &tx_len) == Status::OK)
     {
       uart1_test_tx_bytes += tx_len;
     }

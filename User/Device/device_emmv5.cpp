@@ -104,7 +104,7 @@ Status DeviceEmmV5::init()
  */
 Status DeviceEmmV5::_send_cmd(const uint8_t *cmd, size_t len)
 {
-  return _uart.send(cmd, len, nullptr, 0);
+  return _uart.send(cmd, len, 0);
 }
 
 
@@ -489,7 +489,7 @@ void DeviceEmmV5::read_sys_params(EmmSysParam s)
  */
 Status DeviceEmmV5::receive_raw(uint8_t *buffer, size_t size, size_t *received, uint32_t timeout)
 {
-  return _uart.receive(buffer, size, received, timeout);
+  return _uart.receive(buffer, size, timeout, received);
 }
 
 
@@ -928,7 +928,7 @@ void DeviceEmmV5::send_multi_motor_cmd(uint8_t addr)
   _mmcl_buf[4 + _mmcl_count] = EMMV5_CHECKSUM;
 
   // 通过本实例的 UART 发送
-  _uart.send(_mmcl_buf, len, nullptr, 0);
+  _uart.send(_mmcl_buf, len, 0);
 
   _mmcl_count = 0; // 发送后清空缓冲区
 }
