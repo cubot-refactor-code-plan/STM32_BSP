@@ -1,8 +1,8 @@
 /*
- * cubot_bsp 需要的两个链接段：加进宿主工程的链接脚本（CubeMX 生成的 STM32H7xxxx_FLASH.ld），
+ * stm32_bsp 需要的两个链接段：加进宿主工程的链接脚本（CubeMX 生成的 STM32H7xxxx_FLASH.ld），
  * 放在 SECTIONS { ... } 里、.fini_array 之后、.data 之前即可。
  *
- * CubeMX 新建工程的链接脚本没有这两段。cubot_bsp 的 CMake 在配置阶段检查，缺了直接报错
+ * CubeMX 新建工程的链接脚本没有这两段。stm32_bsp 的 CMake 在配置阶段检查，缺了直接报错
  * （链接脚本一变就会重新检查）。CubeMX 6.18.1 重新生成时保留已有链接脚本的内容（实测只改了几行行尾），
  * 其他版本未验证，重新生成后留意配置阶段的检查结果即可。
  *

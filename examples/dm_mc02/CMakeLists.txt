@@ -69,15 +69,15 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
 ##### User #####
 
-# 接入 cubot_bsp：本仓库根就是库，示例用相对路径接入；
-# 用户工程里写 add_subdirectory(third_party/cubot_bsp) 即可（第二个参数只有库目录不在本工程之下时才需要）
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../.. ${CMAKE_CURRENT_BINARY_DIR}/cubot_bsp)
+# 接入 stm32_bsp：本仓库根就是库，示例用相对路径接入；
+# 用户工程里写 add_subdirectory(third_party/stm32_bsp) 即可（第二个参数只有库目录不在本工程之下时才需要）
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../.. ${CMAKE_CURRENT_BINARY_DIR}/stm32_bsp)
 
 # 板级用户代码（实例配置、api_main、任务、测试）
 add_subdirectory(app)
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
-    cubot_bsp
+    stm32_bsp
     dm_mc02_app
 )
 

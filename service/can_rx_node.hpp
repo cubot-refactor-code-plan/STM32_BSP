@@ -9,7 +9,7 @@
 #include "bsp_can.hpp"
 
 /** @brief 轮询各 CAN 原始接收缓冲，分发成功则消费，否则送入回退缓冲。 */
-extern "C" void cubot_can_rx_task(void *argument);
+extern "C" void can_rx_task(void *argument);
 
 /**
  * @brief 初始化阶段注册、运行阶段只读的 CAN 接收节点。
@@ -38,7 +38,7 @@ private:
 
   friend CanRxNode *regist(BspCan &can_item, uint32_t can_id, Callback callback, void *context, uint32_t id_type);
   friend Status unregist(BspCan &can_item, CanRxNode *node);
-  friend void cubot_can_rx_task(void *argument);
+  friend void can_rx_task(void *argument);
 
 public:
   CanRxNode(const CanRxNode &) = delete;
@@ -55,7 +55,7 @@ public:
  * @param context 回调对象指针，可为空，必须保持有效。
  * @param id_type FDCAN_STANDARD_ID（默认）或 FDCAN_EXTENDED_ID。
  * @return 成功返回节点；失败返回 nullptr，参数/冲突/资源错误记入系统初始化错误。
- * @note 必须在 cubot_init()（内含 SysFlagInit()）之后、cubot_start() 之前的初始化阶段调用；节点总数上限 CUBOT_CAN_RX_NODE_MAX（默认 50）。
+ * @note 必须在 system_init()（内含 SysFlagInit()）之后、system_start() 之前的初始化阶段调用；节点总数上限 CAN_RX_NODE_MAX（默认 50）。
  */
 CanRxNode *regist(BspCan &can_item, uint32_t can_id, CanRxNode::Callback callback, void *context = nullptr, uint32_t id_type = FDCAN_STANDARD_ID);
 

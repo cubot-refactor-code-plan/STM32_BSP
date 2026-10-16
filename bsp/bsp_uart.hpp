@@ -22,7 +22,7 @@
  *
  *   // 2) 全局实例写在用户的板级配置里（示例：examples/dm_mc02/app/board/bsp_cfg.cpp）：句柄 + 是否启用发送 + 波特率
  *   __attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart1({&huart1, true, 115200});
- *   // 3) init() 在初始化阶段调用（cubot_init() 之后、cubot_start() 之前，调度器启动前即可）；
+ *   // 3) init() 在初始化阶段调用（system_init() 之后、system_start() 之前，调度器启动前即可）；
  *   //    init() 时登记进 BspUartBase 登记表，HAL 回调与库的串口巡检靠它找到实例
  *   configASSERT(bsp_uart1.init() == Status::OK);
  *
@@ -57,7 +57,7 @@
 #include "stream_buffer.h"
 #include "task.h"  // IWYU pragma: keep
 
-#include "cubot_defaults.hpp" // 可配置项（用户 cubot_config.h + 默认值）
+#include "hardware_config_defaults.hpp" // 可配置项（用户 hardware_config.h + 默认值）
 #include "status.hpp"         // 统一状态码
 
 
@@ -135,8 +135,8 @@ protected:
   UART_HandleTypeDef *_huart; ///< UART 句柄
 
 private:
-  /** @brief 登记表容量：CUBOT_UART_MAX_INSTANCES（默认 12：STM32H7 最多 11 路 U(S)ART 含 LPUART1，留 1 个余量） */
-  static constexpr uint32_t MAX_INSTANCES = CUBOT_UART_MAX_INSTANCES;
+  /** @brief 登记表容量：UART_MAX_INSTANCES（默认 12：STM32H7 最多 11 路 U(S)ART 含 LPUART1，留 1 个余量） */
+  static constexpr uint32_t MAX_INSTANCES = UART_MAX_INSTANCES;
 
   static BspUartBase *_registry[MAX_INSTANCES]; ///< 已登记实例
   static uint32_t     _registry_num;            ///< 已登记数量
@@ -201,7 +201,7 @@ public:
   /**
    * @brief 创建流缓冲区和两把锁，然后启动 IDLE 接收
    *
-   * @note 在初始化阶段调用（cubot_init() 之后、cubot_start() 之前；调度器启动前也可以创建 FreeRTOS 对象）。
+   * @note 在初始化阶段调用（system_init() 之后、system_start() 之前；调度器启动前也可以创建 FreeRTOS 对象）。
    *       可以重复调用：开头会先把上一次的资源释放掉。
    *
    * @return OK=成功；IO_ERROR=资源创建失败或接收没能启动；
@@ -258,7 +258,7 @@ public:
    *       正常发送时每发一包都会刷新 _tx_last_activity_tick，所以不会把正常发送误判成卡死。
    * @note 重发前先用 DMA 剩余计数算出在途数据已经发出去多少，只补后面的部分，
    *       既不重复也不丢；在途数据如果已经发完，就直接从流缓冲区取新数据。
-   * @note 取锁不等待，可以放进周期任务里调用（比如 cubot_sys_task 的 10 ms 巡检）。
+   * @note 取锁不等待，可以放进周期任务里调用（比如 sys_task 的 10 ms 巡检）。
    *
    * @return true=这次确实恢复成功了一次
    */

@@ -4,14 +4,14 @@
 #ifdef HAL_FDCAN_MODULE_ENABLED
 
 #include "can_rx_node.hpp"
-#include "cubot.hpp"
+#include "system.hpp"
 
-extern "C" void cubot_can_rx_task(void *argument)
+extern "C" void can_rx_task(void *argument)
 {
   (void)argument;
   SysFlagWaitRunning();
   CanRxNode::frozen = true;
-  static_assert(configTICK_RATE_HZ == 1000U, "cubot_can_rx_task requires a 1 kHz tick");
+  static_assert(configTICK_RATE_HZ == 1000U, "can_rx_task requires a 1 kHz tick");
   // 总线来自 BspCan 的登记表（各实例 init() 时登记，运行态之前已定型），库里不引用板级实例
   TickType_t wake_time = xTaskGetTickCount();
   for (;;)

@@ -5,7 +5,7 @@
  * @details 用法：复制 board_cfg.hpp / board_cfg.cpp 到你的工程（例如 app/），按自己的 CubeMX 配置改：
  *          - 只包含工程里真有的 CubeMX 头文件（没开 FDCAN 就没有 fdcan.h，库里的 CAN 驱动也不会编译）；
  *          - 每个外设实例对应 CubeMX 里配好的一个句柄；串口实例必须放进 .dma_buffer 段；
- *          - board_init() 在 cubot_init() 之后、cubot_start() 之前调用（见 app_main.cpp）。
+ *          - board_init() 在 system_init() 之后、system_start() 之前调用（见 app_main.cpp）。
  *          完整示例见 examples/dm_mc02/app/board/。
  */
 

@@ -1,7 +1,7 @@
 #include "app_main.h"
 
 #include "board_cfg.hpp"
-#include "cubot.hpp"
+#include "system.hpp"
 #include "status.hpp"
 
 #include "FreeRTOS.h" // IWYU pragma: keep
@@ -35,8 +35,8 @@ static void app_task(void *argument)
 
 extern "C" void app_init(void)
 {
-  // 1. 库入口：系统事件组 + 库任务（cubot_sys / cubot_can_rx / cubot_can_tx，调度器启动后才运行）
-  cubot_init();
+  // 1. 库入口：系统事件组 + 库任务（sys / can_rx / can_tx，调度器启动后才运行）
+  system_init();
 
   // 2. 板级初始化：外设实例 init()、设备 init()、注册 CAN 节点
   board_init();
@@ -45,5 +45,5 @@ extern "C" void app_init(void)
   configASSERT(xTaskCreate(app_task, "app", 512, NULL, tskIDLE_PRIORITY + 3, NULL) == pdPASS);
 
   // 4. 放行：置运行位；初始化阶段有失败记录（例如 CAN 节点注册失败）就在这里断言停机
-  cubot_start();
+  system_start();
 }

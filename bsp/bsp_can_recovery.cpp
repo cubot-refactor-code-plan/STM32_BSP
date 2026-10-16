@@ -26,7 +26,7 @@ Status BspCan::service_recovery()
     diagnostics.recovering = true;
     ++diagnostics.bus_off_events;
     _recovery_started = now;
-    _recovery_attempted = now - pdMS_TO_TICKS(CUBOT_CAN_BUSOFF_RETRY_MS); // 首次立即尝试
+    _recovery_attempted = now - pdMS_TO_TICKS(CAN_BUSOFF_RETRY_MS); // 首次立即尝试
     // 均为非阻塞缓冲；此临界区排除发送任务/ISR 与接收任务。
     xMessageBufferReset(_tx_message_buffer);
     xMessageBufferReset(_rx_message_buffer);
@@ -37,7 +37,7 @@ Status BspCan::service_recovery()
   {
     // 只在硬件再次置 INIT 时启动恢复，避免反复打断 129x11 位恢复序列。
     if ((_hfdcan->Instance->CCCR & FDCAN_CCCR_INIT) != 0U &&
-        now - _recovery_attempted >= pdMS_TO_TICKS(CUBOT_CAN_BUSOFF_RETRY_MS))
+        now - _recovery_attempted >= pdMS_TO_TICKS(CAN_BUSOFF_RETRY_MS))
     {
       _hfdcan->Instance->TXBCR = _hfdcan->Instance->TXBRP;
       CLEAR_BIT(_hfdcan->Instance->CCCR, FDCAN_CCCR_INIT);
@@ -54,7 +54,7 @@ Status BspCan::service_recovery()
       if (elapsed > diagnostics.recovery_max_ticks)
         diagnostics.recovery_max_ticks = elapsed;
     }
-    else if (now - _recovery_attempted >= pdMS_TO_TICKS(CUBOT_CAN_BUSOFF_RETRY_MS))
+    else if (now - _recovery_attempted >= pdMS_TO_TICKS(CAN_BUSOFF_RETRY_MS))
     {
       // 尚未取消的发送请求继续请求取消，不忙等、不重新初始化外设。
       _hfdcan->Instance->TXBCR = _hfdcan->Instance->TXBRP;

@@ -15,7 +15,7 @@ target_include_directories(dm_mc02_app PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/board
 )
 
-target_link_libraries(dm_mc02_app PUBLIC cubot_bsp stm32cubemx)
+target_link_libraries(dm_mc02_app PUBLIC stm32_bsp stm32cubemx)
 
 set_target_properties(dm_mc02_app PROPERTIES
     CXX_STANDARD 11

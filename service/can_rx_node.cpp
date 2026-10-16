@@ -45,7 +45,7 @@ CanRxNode *regist(BspCan &can_item, uint32_t can_id, CanRxNode::Callback callbac
       return nullptr;
     }
   }
-  if (CanRxNode::node_num >= CUBOT_CAN_RX_NODE_MAX)
+  if (CanRxNode::node_num >= CAN_RX_NODE_MAX)
   {
     SysInitError(Status::FULL);
     return nullptr;

@@ -4,11 +4,11 @@
 #ifdef HAL_FDCAN_MODULE_ENABLED
 
 #include "can_tx_node.hpp"
-#include "cubot.hpp"
+#include "system.hpp"
 
 #include <string.h>
 
-extern "C" void cubot_can_tx_task(void *argument)
+extern "C" void can_tx_task(void *argument)
 {
   (void)argument;
   SysFlagWaitRunning();
@@ -54,7 +54,7 @@ extern "C" void cubot_can_tx_task(void *argument)
           }
         }
         const bool ready = node->bufferRegister != 0U && node->bufferUnsend == node->bufferRegister;
-        const bool due = xTaskGetTickCount() - node->last_send_tick >= pdMS_TO_TICKS(CUBOT_CAN_TX_HEARTBEAT_MS);
+        const bool due = xTaskGetTickCount() - node->last_send_tick >= pdMS_TO_TICKS(CAN_TX_HEARTBEAT_MS);
         if ((ready || due) && can->send(node->txBuffer.std_id, node->txBuffer.data) == Status::OK)
         {
           node->bufferUnsend = 0;

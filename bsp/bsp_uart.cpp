@@ -429,17 +429,17 @@ Status BspUart<BUFFER_SIZE>::send(const uint8_t *data, size_t size, uint32_t tim
  * @brief 格式化输出（printf 风格，超长自动截断；仅任务上下文）
  *
  * @note 实例级的 _printf_buffer 由 _printf_lock 保护，多任务并发调用安全。
- *       入队等待固定为 CUBOT_UART_PRINTF_TIMEOUT_MS（默认 10 ms），不随调用方传入，避免发送卡住时
+ *       入队等待固定为 UART_PRINTF_TIMEOUT_MS（默认 10 ms），不随调用方传入，避免发送卡住时
  *       把调用任务长时间挂起；未全部入队时返回 Status::TIMEOUT（已入队部分照常发出）。
  */
 template <size_t BUFFER_SIZE>
 Status BspUart<BUFFER_SIZE>::printf(const char *fmt, ...)
 {
   // 取锁等待上限 (ms)：避免某一个任务长期持有格式化缓冲
-  constexpr uint32_t PRINTF_LOCK_TIMEOUT_MS = CUBOT_UART_PRINTF_TIMEOUT_MS;
+  constexpr uint32_t PRINTF_LOCK_TIMEOUT_MS = UART_PRINTF_TIMEOUT_MS;
 
   // 入队等待上限 (ms)：发送卡住时不把调用任务无限挂住
-  constexpr uint32_t PRINTF_TX_TIMEOUT_MS = CUBOT_UART_PRINTF_TIMEOUT_MS;
+  constexpr uint32_t PRINTF_TX_TIMEOUT_MS = UART_PRINTF_TIMEOUT_MS;
 
   if (fmt == nullptr)
   {
@@ -525,7 +525,7 @@ Status BspUart<BUFFER_SIZE>::receive(uint8_t *buffer, size_t size, uint32_t time
  * @note 两种情况：
  *       ① 通道空闲，但流缓冲区或 DMA 缓冲里还有没发的数据（丢了一次 TX 完成中断、或 DMA 启动失败）
  *          → 重新启动，先发 DMA 缓冲里留下的那一段。要求**连续两次**巡检都看到才动手：
- *          send() 入队后、自己启动 DMA 前，可能正好被更高优先级的 cubot_sys_task 打断，这一瞬间也是
+ *          send() 入队后、自己启动 DMA 前，可能正好被更高优先级的 sys_task 打断，这一瞬间也是
  *          「空闲但有数据」，属于正常情况，不应算作卡死；
  *       ② 通道忙，但连续 stall_ms 没有推进 → 中止发送，按 DMA 剩余计数算出已发多少，
  *          只续发剩下的（不重复、不丢失），之后再从流缓冲区取新数据。
