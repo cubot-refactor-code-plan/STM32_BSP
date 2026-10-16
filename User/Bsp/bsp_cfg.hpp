@@ -16,7 +16,6 @@
 #include "bsp_gpio.hpp"
 #include "bsp_key.hpp"
 #include "bsp_uart.hpp"
-#include "bsp_usb.hpp"
 
 
 /* ==================== 函数　声明 ==================== */
@@ -62,9 +61,5 @@ extern BspBuzzer bsp_buzzer;
 
 ///< 按键
 extern BspKey key_user;
-
-///< USB
-extern BspUsb& bsp_usb;
-
 
 #endif // __BSP_CFG_HPP__

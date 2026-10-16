@@ -28,12 +28,6 @@
 /** @brief 编译并创建 CAN2 ID1 达妙普通固件四模式实机测试；设为 0 可停用。 */
 #define APP_TEST_DM_MOTOR_ENABLED 0
 
-/** @brief 启用当前 USB 类的周期发送及 HID 回环测试；设为 0 可停用。 */
-#define APP_TEST_USB_TRANSPORT_ENABLED 0
-
-/** @brief 旧名称兼容；新代码应使用 APP_TEST_USB_TRANSPORT_ENABLED。 */
-#define APP_TEST_USB_CDC_ENABLED APP_TEST_USB_TRANSPORT_ENABLED
-
 /** @brief 启用 USART1 串口收发实机测试（回显 + 周期心跳）；设为 0 可停用。 */
 #define APP_TEST_UART_TRANSPORT_ENABLED 0
 
@@ -80,12 +74,6 @@ extern "C"
    * @warning 启用后会改写外置 Flash 最后两个扇区和 0x00100000 附近的 XIP 测试区。
    */
   void qspi_flash_test_task(void *argument);
-
-  /**
-   * @brief 当前 USB 类的非阻塞实机测试步骤，由 USB 服务任务每毫秒调用。
-   * @note CDC 周期发送固定帧；HID 周期发送固定报告并回显主机 OUT Report。
-   */
-  void usb_transport_test_step(void);
 
   /**
    * @brief USART1 串口收发实机测试步骤，由 StartDefaultTask 的 1ms 循环调用。

@@ -20,7 +20,6 @@
  *        ✅ USART10    → bsp_uart10.init()    [IDLE RX DMA + FreeRTOS stream buffer]
  *        ✅ GPIO       → MX_GPIO_Init()       [BspGpio 仅封装]
  *        ✅ KEY (PA15) → key_user.init(...)   [纯软件轮询消抖，无 ISR，使用rtos进行轮询：200ms轮询 → 200ms消抖, 1s长按]
- *        ✅ USB        → BspUsb::instance()   [由默认任务启动后初始化]
  *
  */
 void bsp_init()
@@ -115,11 +114,3 @@ BspBuzzer bsp_buzzer;
 ///< 用户按键 PA15, 低有效
 BspKey key_user;
 
-
-/* ==================== USB ==================== */
-
-/**
- * @brief USB BSP 全局单例引用定义。
- *
- */
-BspUsb &bsp_usb = BspUsb::instance();

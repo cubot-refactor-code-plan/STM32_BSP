@@ -58,8 +58,7 @@ MEMORY
 DTCMRAM (xrw)      : ORIGIN = 0x20000000, LENGTH = 128K
 RAM_D1 (xrw)      : ORIGIN = 0x24000000, LENGTH = 320K
 RAM_D2 (xrw)      : ORIGIN = 0x30000000, LENGTH = 32K
-RAM_D3 (xrw)      : ORIGIN = 0x38000000, LENGTH = 16K - 4
-USB_MAILBOX (rw)  : ORIGIN = 0x38003FFC, LENGTH = 4
+RAM_D3 (xrw)      : ORIGIN = 0x38000000, LENGTH = 16K
 ITCMRAM (xrw)      : ORIGIN = 0x00000000, LENGTH = 64K
 /* Product constraint: fail the link if the internal image exceeds 128 KiB. */
 FLASH (rx)      : ORIGIN = 0x8000000, LENGTH = 128K
@@ -124,23 +123,6 @@ SECTIONS
   __qspi_text_load_start__ = LOADADDR(.qspi_text);
   __qspi_text_load_end__ = LOADADDR(.qspi_text) + SIZEOF(.qspi_text);
 
-  /* Low-frequency USB descriptors/callbacks execute directly from W25Q64JV. */
-  .usb_xip 0x70110000 :
-  {
-    . = ALIGN(4);
-    __usb_xip_start__ = .;
-    KEEP(*(.usb_xip_header))
-    *(.usb_xip_text*)
-    *(.usb_xip_rodata*)
-    . = ALIGN(4);
-    __usb_xip_end__ = .;
-  } >OSPI2
-
-  /* One-shot OpenOCD provisioning request; intentionally not initialized. */
-  .usb_provision_mailbox 0x38003FFC (NOLOAD) :
-  {
-    KEEP(*(.usb_provision_mailbox))
-  } >USB_MAILBOX
 
   .ARM.extab (READONLY) : /* The "READONLY" keyword is only supported in GCC11 and later, remove it if using GCC10 or earlier. */
   {

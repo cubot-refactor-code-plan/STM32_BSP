@@ -1,40 +1,44 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
+# ------------------------------------------------------------------
+# OpenOCD + DAPLink 烧录脚本（Linux）
+#
+#   - 自动定位工程根目录与 build/Debug/<项目名>.elf，可在任意目录调用
+#   - 对应 VS Code 任务：[⚡ DAP烧录Linux] → OpenOCD_flash_linux
+#
+# 用法：bash Flash/OpenOCD_flash.sh
+#       ./Flash/OpenOCD_flash.sh
+# ------------------------------------------------------------------
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
-BUILD_TYPE="${1:-Debug}"
-BUILD_DIR="build/${BUILD_TYPE}"
-INTERNAL_IMAGE="${BUILD_DIR}/${PROJECT_NAME}_internal.hex"
-EXTERNAL_IMAGE="${BUILD_DIR}/${PROJECT_NAME}_usb_xip.bin"
-
 cd "$PROJECT_DIR"
 
-if [ ! -f "$INTERNAL_IMAGE" ]; then
-    echo "Error: internal image not found at $INTERNAL_IMAGE"
-    exit 1
+# 1) 找 ELF：先按项目名，找不到再兜底搜索整个 build 目录
+ELF_FILE="build/Debug/${PROJECT_NAME}.elf"
+if [ ! -f "$ELF_FILE" ]; then
+    ELF_FILE="$(find build -name '*.elf' -type f 2>/dev/null | head -n 1 || true)"
 fi
-if [ ! -s "$EXTERNAL_IMAGE" ]; then
-    echo "Error: external USB XIP image not found or empty at $EXTERNAL_IMAGE"
+if [ -z "${ELF_FILE}" ] || [ ! -f "$ELF_FILE" ]; then
+    echo "❌ 找不到 .elf，请先编译（任务：[🔨 编译 F7]）"
     exit 1
 fi
 
-echo "Programming internal Flash: $INTERNAL_IMAGE"
-openocd -f Flash/daplink.cfg \
-    -c "program \"${INTERNAL_IMAGE}\" verify reset exit"
+# 2) 检查 openocd 是否可用
+if ! command -v openocd >/dev/null 2>&1; then
+    echo "❌ 未找到 openocd，请先安装：sudo apt install openocd"
+    exit 1
+fi
 
-echo "Programming W25Q64JV USB XIP payload: $EXTERNAL_IMAGE"
-openocd -f Flash/daplink.cfg \
-    -c "init" \
-    -c "reset halt" \
-    -c "mww 0x38003ffc 0x55535031" \
-    -c "resume" \
-    -c "sleep 1500" \
-    -c "halt" \
-    -c "flash probe stm32h7x.octospi2" \
-    -c "flash write_image erase \"${EXTERNAL_IMAGE}\" 0x70110000 bin" \
-    -c "verify_image \"${EXTERNAL_IMAGE}\" 0x70110000 bin" \
-    -c "reset run" \
-    -c "shutdown"
+echo "🔧 项目：$PROJECT_NAME"
+echo "📦 ELF ：$ELF_FILE"
+echo "⚡ OpenOCD 烧录中（DAPLink / CMSIS-DAP）..."
+
+openocd -f "$SCRIPT_DIR/daplink.cfg" \
+        -c "gdb_port disabled" \
+        -c "tcl_port disabled" \
+        -c "telnet_port disabled" \
+        -c "program \"$ELF_FILE\" verify reset exit"
+
+echo "✅ 烧录完成"

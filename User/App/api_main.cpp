@@ -163,17 +163,8 @@ extern "C" void StartDefaultTask(void *argument)
 {
   (void)argument; // 未使用参数
 
-  /* Flash 复位等待和 TinyUSB RTOS 对象都要求调度器已经运行。 */
-  bsp_usb.init();
-
   for (;;)
   {
-    bsp_usb.task();
-
-#if APP_TEST_USB_TRANSPORT_ENABLED
-    usb_transport_test_step();
-#endif
-
 #if APP_TEST_UART_TRANSPORT_ENABLED
     uart_transport_test_step(); // USART1 收发测试：回显 + 周期心跳
 #endif
