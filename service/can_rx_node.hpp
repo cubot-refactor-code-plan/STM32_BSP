@@ -4,7 +4,7 @@
 #include "bsp_can.hpp"
 
 /** @brief 轮询各 CAN 原始接收缓冲，分发成功则消费，否则送入回退缓冲。 */
-extern "C" void can_rx_task(void *argument);
+extern "C" void cubot_can_rx_task(void *argument);
 
 /**
  * @brief 初始化阶段注册、运行阶段只读的 CAN 接收节点。
@@ -33,7 +33,7 @@ private:
 
   friend CanRxNode *regist(BspCan &can_item, uint32_t can_id, Callback callback, void *context, uint32_t id_type);
   friend Status unregist(BspCan &can_item, CanRxNode *node);
-  friend void can_rx_task(void *argument);
+  friend void cubot_can_rx_task(void *argument);
 
 public:
   CanRxNode(const CanRxNode &) = delete;

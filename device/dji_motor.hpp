@@ -6,7 +6,7 @@
  * @date 2026-09-01
  *
  * @details init() 将控制帧槽位注册到 CanTxNode，将反馈 ID 注册到 CanRxNode。
- *          can_rx_task 自动调用反馈解包，并在成功后刷新在线状态。
+ *          cubot_can_rx_task 自动调用反馈解包，并在成功后刷新在线状态。
  * @note 构造阶段仅校验参数；成功初始化的对象必须存活至系统停止。
  */
 #ifndef __DJI_MOTOR_HPP__
@@ -204,7 +204,7 @@ public:
    * @return Status::OK 写入成功；Status::NOT_INIT 未成功初始化；
    *         Status::BAD_ARG 或其他状态表示参数或发送槽位操作失败。
    *
-   * @note 本函数只更新发送槽位，实际发送由 can_tx_task 统一完成。
+   * @note 本函数只更新发送槽位，实际发送由 cubot_can_tx_task 统一完成。
    */
   Status FillData(int16_t output);
 

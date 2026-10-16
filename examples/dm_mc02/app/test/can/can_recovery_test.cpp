@@ -53,7 +53,7 @@ bool wait_feedback(uint32_t timeout_ms)
   return false;
 }
 
-// 短临界区修改测试总线位时序；失败也恢复原 INIT 请求，不在 sys_task 中忙等。
+// 短临界区修改测试总线位时序；失败也恢复原 INIT 请求，不在 cubot_sys_task 中忙等。
 bool timing(uint32_t nbtp)
 {
   taskENTER_CRITICAL();
@@ -63,7 +63,7 @@ bool timing(uint32_t nbtp)
   if (tries == 0) { taskEXIT_CRITICAL(); return false; }
   SET_BIT(hfdcan1.Instance->CCCR, FDCAN_CCCR_CCE);
   hfdcan1.Instance->NBTP = nbtp;
-  // 真正 Bus-Off 时将恢复动作留给 sys_task；普通测试配置退出初始化。
+  // 真正 Bus-Off 时将恢复动作留给 cubot_sys_task；普通测试配置退出初始化。
   if ((hfdcan1.Instance->PSR & FDCAN_PSR_BO) == 0)
     CLEAR_BIT(hfdcan1.Instance->CCCR, FDCAN_CCCR_INIT);
   taskEXIT_CRITICAL();

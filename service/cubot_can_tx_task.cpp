@@ -1,8 +1,9 @@
 #include "can_tx_node.hpp"
+#include "cubot.hpp"
 
 #include <string.h>
 
-extern "C" void can_tx_task(void *argument)
+extern "C" void cubot_can_tx_task(void *argument)
 {
   (void)argument;
   SysFlagWaitRunning();

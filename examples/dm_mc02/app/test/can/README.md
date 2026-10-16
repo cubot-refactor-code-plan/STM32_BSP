@@ -38,7 +38,7 @@ Bus-Off 且旧 TX 请求已取消；端到端恢复由测试的新反馈验证�
 
 ## 生产行为与边界
 
-sys_task 每毫秒服务三条总线。Bus-Off 后清软件 TX/原始 RX 缓冲，取消
+cubot_sys_task 每毫秒服务三条总线。Bus-Off 后清软件 TX/原始 RX 缓冲，取消
 硬件 TXBRP 中的旧请求，清 CCCR.INIT 启动硬件恢复。若再次 Bus-Off，
 最短 100 ms 再尝试；没有忙等、动态分配或共享外设 RCC 复位。
 恢复过程禁止新的发送；退出 BO 且 TXBRP 清零后重新允许发送。
@@ -49,7 +49,7 @@ sys_task 每毫秒服务三条总线。Bus-Off 后清软件 TX/原始 RX 缓冲�
 - `process_fifo0_isr()` 先把帧读进 64 字节缓冲：DLC > 8 的帧（FD 帧，或经典帧 DLC 9~15）
   丢弃并计入 `diagnostics.rx_len_drop`。原来 HAL 按 DLC 拷贝 12~64 字节进 8 字节的
   `rxMsg.data`，实测一帧 DLC=15 就让中断返回地址被帧数据覆盖（MemManage）。
-- 发送节点的每个槽位记录最近一次 `filldata()` 的时刻，`can_tx_task` 发现超过
+- 发送节点的每个槽位记录最近一次 `filldata()` 的时刻，`cubot_can_tx_task` 发现超过
   `CanTxNode::CMD_EXPIRE_MS`（100 ms）未刷新就把该槽位清零，控制任务卡死后电机不会
   按最后一次电流一直转；诊断计数 `expiredCount`。实测（FDCAN1 内部回环）：停止写入后
   101 ms 起控制帧变为 0，恢复写入 2 ms 内恢复输出。
@@ -90,5 +90,5 @@ CAN1 / C620 ID2 / M3508，电源限流 2 A，全程零电流指令。
 
 当前（2026-10-16 起）测试开关只剩 APP_TEST_ONLINE_CHECK_ENABLED 与
 APP_TEST_CAN_RECOVERY_ENABLED，默认都为 0，默认固件不在 CAN1 上注册任何节点。
-打开 CAN 恢复测试后复位等待 arm=1；Bus-Off 生产恢复逻辑持续由 sys_task 服务。
+打开 CAN 恢复测试后复位等待 arm=1；Bus-Off 生产恢复逻辑持续由 cubot_sys_task 服务。
 上面记录里提到的 DJI 电机测试固件（dji_motor_test）已在 mini-bsp 删减中移除。

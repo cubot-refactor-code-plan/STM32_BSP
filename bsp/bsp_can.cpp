@@ -207,7 +207,7 @@ Status BspCan::send(uint32_t std_id, uint8_t *data)
   txMsg.std_id = std_id;
   memcpy(txMsg.data, data, 8);
 
-  // 与 ISR 消费、sys_task 清队列串行化，避免 MessageBuffer 多读者竞争。
+  // 与 ISR 消费、cubot_sys_task 清队列串行化，避免 MessageBuffer 多读者竞争。
   taskENTER_CRITICAL();
   if (!tx_available())
   {
