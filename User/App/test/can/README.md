@@ -44,6 +44,17 @@ sys_task 每毫秒服务三条总线。Bus-Off 后清软件 TX/原始 RX 缓冲�
 恢复过程禁止新的发送；退出 BO 且 TXBRP 清零后重新允许发送。
 注册节点保留，业务应持续更新控制意图，以恢复最新指令。
 
+## 接收长度过滤与指令有效期（2026-10-16）
+
+- `process_fifo0_isr()` 先把帧读进 64 字节缓冲：DLC > 8 的帧（FD 帧，或经典帧 DLC 9~15）
+  丢弃并计入 `diagnostics.rx_len_drop`。原来 HAL 按 DLC 拷贝 12~64 字节进 8 字节的
+  `rxMsg.data`，实测一帧 DLC=15 就让中断返回地址被帧数据覆盖（MemManage）。
+- 发送节点的每个槽位记录最近一次 `filldata()` 的时刻，`can_tx_task` 发现超过
+  `CanTxNode::CMD_EXPIRE_MS`（100 ms）未刷新就把该槽位清零，控制任务卡死后电机不会
+  按最后一次电流一直转；诊断计数 `expiredCount`。实测（FDCAN1 内部回环）：停止写入后
+  101 ms 起控制帧变为 0，恢复写入 2 ms 内恢复输出。
+- 本节两项只在内部回环上验证，真实电调对清零指令的响应未测。
+
 恢复不消除仍然存在的断线、短路、错误波特率或外设硬件故障；它保证
 软件继续尝试，而不要求用户复位 MCU。总线恢复不意味着离线期间执行器
 仍可控制，执行器自身的通信超时策略仍有必要。
@@ -77,5 +88,6 @@ CAN1 / C620 ID2 / M3508，电源限流 2 A，全程零电流指令。
 - 输出轴位移 +6.9367 / -7.7443 rad；最终转速 0、0x200 全零输出。
 - 反馈在线，反馈拒收与 CAN 收发错误计数均为 0。
 
-当前 APP_TEST_DJI_MOTOR_ENABLED=1，APP_TEST_CAN_RECOVERY_ENABLED=0。
-电机测试复位后等待 arm=1；Bus-Off 生产恢复逻辑持续由 sys_task 服务。
+当前（2026-10-16 起）所有测试开关默认为 0：APP_TEST_DJI_MOTOR_ENABLED=0，
+APP_TEST_CAN_RECOVERY_ENABLED=0，默认固件不在 CAN1 上注册任何节点。
+打开电机测试后复位等待 arm=1；Bus-Off 生产恢复逻辑持续由 sys_task 服务。

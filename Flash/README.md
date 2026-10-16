@@ -18,7 +18,12 @@ J-Link 探针，不调用 J-Link Commander；可用 `openocd -c "adapter list" -
 - `DM_MC02_internal.hex`：STM32 内部 Flash 镜像；
 - `DM_MC02_usb_xip.bin`：写入 W25Q64JV `0x70110000` 的 USB XIP 镜像。
 
-构建完成后必须使用双镜像脚本，不能只下载 ELF。各脚本默认使用 `build/Debug`：
+构建完成后必须使用双镜像脚本，不能只下载 ELF。各脚本默认使用 `build/Debug`。
+
+第二段（外置 Flash）的流程是：写邮箱 `0x38003FFC` → 让固件跑起来、由固件初始化 OCTOSPI2 →
+再由 OpenOCD 写 `0x70110000`。所以**开机就停机的固件**（例如故意让 `init()` 失败、停在
+`configASSERT` 的测试固件）第二段一定失败，而且可能把调试口卡死（OpenOCD 报
+`Examination failed`），此时需要给板子断电再上电。这类测试固件只烧内部 Flash 即可。
 
 ```bash
 bash Flash/OpenOCD_flash.sh Debug

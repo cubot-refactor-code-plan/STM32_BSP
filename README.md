@@ -24,12 +24,28 @@
 
 ---
 
-- 没测试改后的BSP层，但应该99%没问题
-- device层中的代码很久没测了，需要测试
+- BSP 层的 CAN 接收与 UART 收发已于 2026-10-16 修复并实机验证（见下节「运行期保护与故障现场」）；其余 BSP 未重新实测
+- device层中的代码很久没测了，需要测试（`dm_motor.cpp` 目前只有声明、没有实现，见文末）
 - app层仍旧在规划，各种test还没写，以及具体的代码应该实现什么，还在规划
 - protocol_uart还是很难绷，目前没有代码在用，框架没问题，但是实际没有在用的
 - menu太敷衍了，需要移植一个好看的ui出来，我实现的这个非常敷衍而且简单，包括触发使用的方式和处理
 - SPI和IIC的回调问题，目前使用的都是阻塞。但是这种通讯模式好像阻塞最适合，因为需要建立连接和等待，例如CS拉高拉低、IIC的处理。
+
+## 运行期保护与故障现场
+
+2026-10-16 修复并实机验证的五项（均在内部回环 / 串口跳线上测过，真实总线上的外部节点、真实电调未测）：
+
+| 项目 | 现在的行为 | 位置 |
+| --- | --- | --- |
+| CAN 接收 | 先读进 64 字节缓冲；DLC > 8 的帧（FD 帧或经典帧 DLC 9~15）丢弃并计入 `diagnostics.rx_len_drop`，不再写穿中断栈 | `User/Bsp/bsp_can.cpp` |
+| UART 收发 | 多任务可并发 `send()` / `printf()`（写锁 + printf 锁）；DMA 启动失败的包留在发送缓冲重发；`sys_task` 每 10 ms 对 8 路串口调 `tx_recover()` / `rx_recover()`，修复卡死的发送与停摆的接收（期间关本串口中断，DMA 句柄卡在 ERROR 时复位）；诊断量见 `rx_diag()` / `tx_diag()` | `User/Bsp/bsp_uart.*`、`User/App/task/sys_task.cpp` |
+| 测试开关 | `User/App/app_test.hpp` 中所有测试默认 0，默认固件不驱动任何执行器 | `User/App/app_test.hpp` |
+| CAN 指令有效期 | 发送槽位超过 100 ms 没被 `FillData()` / `filldata()` 刷新就清零（只清该槽位），控制任务卡死后电机停转；诊断计数 `expiredCount` | `User/Service/can_tx_node.*`、`User/App/task/can_tx_task.cpp` |
+| 初始化失败与故障现场 | `bsp_init()` / `device_init()` 逐条 `configASSERT`；`SysCompleteInit()` 有失败记录时由 `all_init()` 断言停机；`SysFlagWaitRunning()` 等到失败位就退出任务；断言 / 栈溢出 / 分配失败都写进 `fault_record` 再停机（接调试器时 BKPT） | `User/Service/fault_record.*`、`User/Service/status.*` |
+
+UART 接口约定：`send(data, size, timeout_ms, written)`、`receive(buf, size, timeout_ms, received)`，超时单位是毫秒，`portMAX_DELAY` 表示一直等；`Config` 第三个参数是波特率（只给发送侧判卡死用，必须与 CubeMX 一致）。已知限制：7 路 TX DMA 开着 DMA FIFO，卡死恢复时可能丢 DMA FIFO 里预读的字节（约 8~16 字节/次）。
+
+查看故障现场：`fault_record` 放在 RAM_D1 的 `.noinit` 段，复位（看门狗 / 复位键 / 调试器）后仍保留，掉电后靠 `magic` 判断是否有效。用 GDB 挂接后 `print fault_record`，可看到种类（ASSERT / STACK_OVERFLOW / MALLOC_FAILED）、累计次数、文件名与行号、tick、IPSR、任务名。
 
 ## 具体文件树
 
@@ -43,7 +59,7 @@ root
 │                   │DM_MC02.ioc           STM32CubeMX 工程文件
 │                   │README.md             本文件
 │                   │startup_stm32h723xx.s 启动文件
-│                   │STM32H723XG_FLASH.ld  链接脚本
+│                   │STM32H723xG_flash.ld  链接脚本（构建实际使用；含 XIP、.dma_buffer、.noinit、USB 邮箱段；CubeMX 重新生成会覆盖它，生成后要还原）
 │                   |---
 ├─.vscode           |`tasks`是终端执行的任务
 |                   |如果想使用烧录和调试功能，需要工程名字和文件夹名字一样才可以（elf/hex文件名字和主文件夹名字相同）
@@ -61,46 +77,55 @@ root
 ├─Drivers           |STM32的Driver层文件
 ├─Flash             |个人写的烧录相关 工程名字和文件夹名字一样才可以烧录 写好了DAP和JLink 以及win和linux的烧录脚本 ozone
 ├─Middlewares       |官方生成的中间件库，FreeRTOS，USB
+├─QSPI_Flash        |板载 W25Q64JV（OCTOSPI2）驱动、XIP 与外部加载器，见 QSPI_Flash/README.md
 ├─tinyusb-0.20.0    |TinyUSB库
 └─User              |---
     ├─CMakeLists.txt  |User库一键导入配置
     ├─Bsp             |板载支持驱动
     │  ├─bsp_buzzer.cpp / hpp
-    │  ├─bsp_can.cpp / hpp
-    │  ├─bsp_cfg.cpp / hpp
+    │  ├─bsp_can.cpp / hpp        CAN 收发、DLC 过滤、诊断
+    │  ├─bsp_can_recovery.cpp     Bus-Off 恢复（sys_task 调用）
+    │  ├─bsp_cfg.cpp / hpp        全局实例与 bsp_init()（逐条断言）
     │  ├─bsp_gpio.hpp
     │  ├─bsp_key.cpp / hpp
-    │  ├─bsp_uart.cpp / hpp
+    │  ├─bsp_uart.cpp / hpp       IDLE+DMA 收、多任务安全发、收发恢复
     │  ├─bsp_usb.cpp / hpp
     │  └─tusb_config.h
     ├─Device          |设备层
-    │  ├─device_cfg.cpp / hpp
-    │  ├─device_emmv5.cpp / hpp
-    │  ├─dm_imu.cpp / hpp
-    │  ├─emm_frame.hpp
-    │  ├─JC2804.cpp / hpp
-    │  ├─Lcd.cpp / hpp
-    │  └─LcdFont.hpp
+    │  ├─device_cfg.cpp / hpp     全局实例与 device_init()（逐条断言）
+    │  ├─device_emmv5.cpp / hpp   张大头 Emm_V5（未实例化）
+    │  ├─dji_motor.cpp / hpp      DJI 电机（M3508 / M2006 / GM6020）
+    │  ├─dm_imu.cpp / hpp         达妙 IMU（未接入接收）
+    │  ├─dm_motor.cpp / hpp       达妙电机（只有声明，没有实现）
+    │  ├─lcd.cpp / hpp
+    │  └─lcd_font.hpp
     ├─Module          |模块层（ 多个设备组合 ）
     │  └─menu.cpp / hpp
     ├─Protocol        |协议层
     │  ├─data_pack.cpp / hpp
     │  ├─protocol_cfg.cpp / hpp
     │  └─protocol_uart.cpp / hpp
-    ├─Service         |服务层（ 状态码 / 类型工具 ）
-    │  ├─status.hpp
-    │  └─uart_type_list.hpp
+    ├─Service         |服务层
+    │  ├─can_rx_node.cpp / hpp    CAN 接收节点（按 ID 分发）
+    │  ├─can_tx_node.cpp / hpp    CAN 发送节点（槽位聚合、100 ms 指令有效期）
+    │  ├─fault_record.cpp / hpp   故障现场记录（.noinit，跨复位保留）
+    │  ├─motor_definition.hpp
+    │  ├─online_check.cpp / hpp
+    │  └─status.cpp / hpp         统一状态码与系统事件标志
     ├─Algorithm       |算法层
     │  ├─pid.cpp
     │  └─pid.hpp
     └─App             |应用层 / c cpp混编接口层
         ├─api_main.cpp / h
+        ├─app_message.cpp / hpp
         ├─app_task.hpp
-        ├─app_test.hpp
+        ├─app_test.hpp            测试开关（默认全部为 0）
         ├─task/       |业务任务（除默认任务外）
+        │  ├─can_rx_task.cpp / can_tx_task.cpp
+        │  ├─msg_task.cpp
+        │  ├─sys_task.cpp         1 kHz：CAN Bus-Off 恢复、每 10 ms 串口补救、Online 计时
         │  └─task_menu.cpp
-        └─test/       |测试任务
-            └─msg_task.cpp
+        └─test/       |测试任务（can / motor / online_check / qspi_flash / uart / usb）
 
 ```
 我认为：ST官方生成的属于BSP的一部分 以及 Service的一部分
@@ -154,6 +179,8 @@ cmake --build build/Debug
 ./Flash/OpenOCD_flash.sh
 ```
 
+注意：第二段需要先让固件跑起来、由固件初始化 OCTOSPI2 后再写外置 Flash。开机就停机的固件（例如故意让 `init()` 失败的测试固件）第二段会失败，并可能把调试口卡死（OpenOCD 无法 examine 内核），需要给板子重新上电；这类固件只烧内部 Flash 即可。
+
 使用 J-Link 探针烧写（经 OpenOCD `jlink` 适配器，当前环境未连接 J-Link 探针）：
 
 ```bash
@@ -174,7 +201,7 @@ cmake --build build/Debug
 
 2026-09-01 已使用 C620（绿色双闪，ID 为 2）和 M3508 完成实机验证：CAN 波特率为 1 Mbps，控制帧标准 ID 为 `0x200`，ID2 的电流指令放在 `DATA[2:3]`（高字节在前），反馈帧标准 ID 为 `0x202`。本次成功连接使用同面线；控制板和电调均需正确供电，CANH/CANL 线序及终端电阻应按硬件说明检查。
 
-低电流短时测试已移至 `User/App/test/motor/dji_motor_test.cpp`：启动 2 秒后向 ID2 发送原始电流值 512（约 0.625 A），持续 1 秒后恢复为零。测试由 `User/App/app_test.hpp` 中的 `APP_TEST_DJI_MOTOR_ENABLED` 控制；默认值为 `0`，因此正常烧写或复位不会驱动电机。启用测试前必须将电机架空或可靠固定。
+低电流短时测试已移至 `User/App/test/motor/dji_motor_test.cpp`：启用后保持零输出，调试器写 `dji_motor_test_arm=1` 才执行一次双向测试——原始电流 +512 与 -512（约 0.625 A）各 600 ms，之后滑停并检查方向与位移。测试由 `User/App/app_test.hpp` 中的 `APP_TEST_DJI_MOTOR_ENABLED` 控制；默认值为 `0`（2026-10-16 起），默认固件不会在 CAN1 上注册电机、也不发 0x200。启用测试前必须将电机架空或可靠固定；它与 CAN 恢复测试不能同时打开（文件内 `#error`）。
 
 基于 `DjiMotor`/`DjiMotorBus` 新框架的实测结果为：测试任务通过，收到并成功分发 `0x202` 反馈 20330 帧、忽略 0 帧，峰值转速 3532 rpm，CAN 发送错误计数、接收错误计数和 Bus-Off 均为 0；测试结束后内部 `0x200` 帧四个输出槽位均为零。可在 Live Watch 中查看 `dji_motor_task_*` 和 `dji_motor_test_*` 诊断量。
 
@@ -297,6 +324,15 @@ __attribute__((section(".dma_buffer"))) 使用这一个缀修饰
 
   /* === 用户dma相关配置结束 === */
 
+  /* 故障现场记录：NOLOAD 且不在 .bss 范围内，启动代码不清零，复位后仍保留上一次的内容（掉电丢失） */
+  .noinit (NOLOAD) :
+  {
+    . = ALIGN(4);
+    *(.noinit)
+    *(.noinit*)
+    . = ALIGN(4);
+  } >RAM_D1
+
   /* used by the startup to initialize data */
   _sidata = LOADADDR(.data);
 
@@ -328,6 +364,9 @@ __attribute__((section(".dma_buffer"))) 使用这一个缀修饰
 ### Bsp 驱动
 ### Device 设备
 #### DM_Motor 达妙电机驱动
+
+> ⚠️ 当前状态：`User/Device/dm_motor.cpp` 只有一行 `#include`，下面的接口只有声明、没有实现（实现在提交 `ea9c6ed` 中删除后未重写）；打开 `APP_TEST_DM_MOTOR_ENABLED` 会编译失败。
+
 ##### 使用接口
 + **初始化** 
   - 先声明`DmMotor<电机型号> 电机名称(can_item, esc_id, master_id, mode);`
