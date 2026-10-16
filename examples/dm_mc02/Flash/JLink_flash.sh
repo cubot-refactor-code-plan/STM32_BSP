@@ -11,7 +11,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_NAME="$(basename "$PROJECT_DIR")"
+# 工程名取自 CMake 缓存（CMAKE_PROJECT_NAME），不再依赖目录名；还没配置过时退回目录名
+PROJECT_NAME="$(sed -n 's/^CMAKE_PROJECT_NAME:STATIC=//p' "$PROJECT_DIR/build/${1:-Debug}/CMakeCache.txt" 2>/dev/null || true)"
+[ -n "$PROJECT_NAME" ] || PROJECT_NAME="$(basename "$PROJECT_DIR")"
 BUILD_TYPE="${1:-Debug}"
 BUILD_DIR="build/${BUILD_TYPE}"
 

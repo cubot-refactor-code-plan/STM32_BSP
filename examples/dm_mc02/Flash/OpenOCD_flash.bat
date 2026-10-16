@@ -1,6 +1,7 @@
 @echo off
-REM 获取当前脚本所在目录的父目录名称（项目名称）
+REM 工程名取自 CMake 缓存（CMAKE_PROJECT_NAME），不再依赖目录名；还没配置过时退回目录名
 for %%i in ("%~dp0\..") do set "PROJECT_NAME=%%~nxi"
+for /f "tokens=2 delims==" %%a in ('findstr /b "CMAKE_PROJECT_NAME:STATIC=" "%~dp0\..\build\Debug\CMakeCache.txt" 2^>nul') do set "PROJECT_NAME=%%a"
 
 REM 构建 ELF 文件路径（使用正斜杠避免 OpenOCD 路径问题）
 set "ELF_FILE=build/debug/%PROJECT_NAME%.elf"

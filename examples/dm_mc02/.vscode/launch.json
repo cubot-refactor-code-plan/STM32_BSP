@@ -7,8 +7,8 @@
       "request": "launch",
       "name": "cmsis-dap-debug",
       "servertype": "openocd",
-      // 这个是根据主文件名 作为名字 ${workspaceFolderBasename}
-      "executable": "build/Debug/${workspaceFolderBasename}.elf",
+      // ELF 名即 CMake 工程名 DM_MC02（不再依赖工作区目录名）
+      "executable": "build/Debug/DM_MC02.elf",
       "runToEntryPoint": "main",
       "configFiles": [
         "interface/cmsis-dap.cfg",
@@ -28,8 +28,8 @@
       "servertype": "jlink",
       "interface": "swd", // 改成jtag也可以
       
-      // 这个是根据主文件名 作为名字 ${workspaceFolderBasename}
-      "executable": "build/Debug/${workspaceFolderBasename}.elf",
+      // ELF 名即 CMake 工程名 DM_MC02（不再依赖工作区目录名）
+      "executable": "build/Debug/DM_MC02.elf",
       "runToEntryPoint": "main",
       "device": "STM32H723VG",
       "svdFile": "Flash/STM32H723.svd",

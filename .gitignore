@@ -2,9 +2,9 @@
 # 编译生成的文件 (Build Output)
 # ==============================================================================
 # 忽略 CMake 和 Make 的构建目录
-build/Debug/*
-build/*
-Debug/*
+# 任意层级的构建目录（示例工程在 examples/<板名>/build/）
+build/
+Debug/
 
 # 保留个人配置的.vscode
 

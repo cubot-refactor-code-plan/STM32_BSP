@@ -69,8 +69,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
 
 ##### User #####
 
-# Add User's folders to main
-add_subdirectory(User)
+# Add User's folders to main（User/ 暂时仍在仓库根，阶段 B 第 2 步拆成库与示例 app）
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../User ${CMAKE_CURRENT_BINARY_DIR}/User)
 
 # Add stm32cubemx to User_lib
 target_link_libraries(User_lib PRIVATE stm32cubemx)
