@@ -76,7 +76,9 @@ extern uint32_t SystemCoreClock;
 #define configUSE_16_BIT_TICKS                   0
 #define configUSE_MUTEXES                        1
 #define configQUEUE_REGISTRY_SIZE                8
+#define configCHECK_FOR_STACK_OVERFLOW           2
 #define configUSE_RECURSIVE_MUTEXES              1
+#define configUSE_MALLOC_FAILED_HOOK             1
 #define configUSE_COUNTING_SEMAPHORES            1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION  0
 /* USER CODE BEGIN MESSAGE_BUFFER_LENGTH_TYPE */
@@ -97,8 +99,6 @@ extern uint32_t SystemCoreClock;
 
 /* The following flag must be enabled only when using newlib */
 #define configUSE_NEWLIB_REENTRANT          1
-#define configUSE_MALLOC_FAILED_HOOK         1
-#define configCHECK_FOR_STACK_OVERFLOW       2
 
 /* CMSIS-RTOS V2 flags */
 #define configUSE_OS2_THREAD_SUSPEND_RESUME  1
@@ -158,7 +158,20 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 /* Normal assert() semantics without relying on the provision of an assert.h
 header file. */
 /* USER CODE BEGIN 1 */
-#define configASSERT( x ) if ((x) == 0) {taskDISABLE_INTERRUPTS(); for( ;; );}
+/* 故障现场记录（实现见 User/Service/fault_record.cpp）：断言失败时先记下文件名与行号再停机。
+   内核源码所在的库目标看不到 User 的头文件，所以原型直接在这里声明。 */
+#if defined(__ICCARM__) || defined(__CC_ARM) || defined(__GNUC__)
+#ifdef __cplusplus
+extern "C" {
+#endif
+void fault_on_assert(const char *file, int line);
+void fault_on_stack_overflow(const char *task_name);
+void fault_on_malloc_failed(void);
+#ifdef __cplusplus
+}
+#endif
+#endif
+#define configASSERT( x ) if ((x) == 0) { fault_on_assert(__FILE__, __LINE__); }
 /* USER CODE END 1 */
 
 /* Definitions that map the FreeRTOS port interrupt handlers to their CMSIS

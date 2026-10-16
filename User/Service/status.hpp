@@ -40,7 +40,7 @@ enum class Status : uint8_t
 
 Status SysFlagInit(void);
 Status SysFlagSet(Status statu);
-void SysCompleteInit(void);
+Status SysCompleteInit(void);
 void SysInitError(void);
 Status SysInitError(Status statu);
 uint32_t SysFlagWait(Status statu, uint32_t timeout);

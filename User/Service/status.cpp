@@ -31,12 +31,23 @@ Status SysFlagSet(Status statu)
     return Status::OK;
 }
 
-void SysCompleteInit(void)
+/**
+ * @brief 初始化全部完成：置运行位
+ * @return OK=已置运行位；NOT_SUPPORTED=此前有初始化失败记录（SysInitError），运行位不置；NOT_INIT=事件组未创建
+ * @note 调用方（all_init）用 configASSERT 检查返回值：有失败记录就停机并留下现场，而不是带着半初始化的系统继续跑。
+ */
+Status SysCompleteInit(void)
 {
-    if ( (osEventFlagsGet(sysEvent) & SYS_FLAG_INIT_FAIL_BIT) == 0 )
+    if (sysEvent == NULL)
     {
-        osEventFlagsSet(sysEvent, SYS_FLAG_RUNNING_BIT);
+        return Status::NOT_INIT;
     }
+    if ((osEventFlagsGet(sysEvent) & SYS_FLAG_INIT_FAIL_BIT) != 0U)
+    {
+        return Status::NOT_SUPPORTED;
+    }
+    osEventFlagsSet(sysEvent, SYS_FLAG_RUNNING_BIT);
+    return Status::OK;
 }
 
 void SysInitError(void)
@@ -63,12 +74,13 @@ void SysFlagWaitRunning(void)
         osThreadExit();
     }
 
+    // 同时等运行位与初始化失败位：只等运行位的话，初始化失败时它永不置位，任务会永久阻塞
     const uint32_t flags = osEventFlagsWait(sysEvent,
-                                            SYS_FLAG_RUNNING_BIT,
-                                            osFlagsWaitAll | osFlagsNoClear,
+                                            SYS_FLAG_RUNNING_BIT | SYS_FLAG_INIT_FAIL_BIT,
+                                            osFlagsWaitAny | osFlagsNoClear,
                                             osWaitForever);
-    if ((flags & osFlagsError) != 0U)
+    if (((flags & osFlagsError) != 0U) || ((flags & SYS_FLAG_RUNNING_BIT) == 0U))
     {
-        osThreadExit();
+        osThreadExit(); // 等到的是初始化失败：任务自行退出
     }
 }

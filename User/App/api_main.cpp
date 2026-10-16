@@ -143,7 +143,8 @@ void all_init()
                            NULL) == pdPASS);
 #endif
 
-  SysCompleteInit();
+  // 有初始化失败记录（各注册函数调过 SysInitError）就在这里停机，fault_record 记下本行
+  configASSERT(SysCompleteInit() == Status::OK);
 
 }
 

@@ -198,6 +198,15 @@ SECTIONS
     _edma_buffer = .;
   } >RAM_D1
 
+  /* 故障现场记录：NOLOAD 且不在 .bss 范围内，启动代码不清零，复位后仍保留上一次的内容（掉电丢失） */
+  .noinit (NOLOAD) :
+  {
+    . = ALIGN(4);
+    *(.noinit)
+    *(.noinit*)
+    . = ALIGN(4);
+  } >RAM_D1
+
   /* 用户dma相关配置结束 */
 
   /* used by the startup to initialize data */

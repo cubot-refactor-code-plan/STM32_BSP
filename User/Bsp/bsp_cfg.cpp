@@ -1,5 +1,7 @@
 #include "bsp_cfg.hpp"
 
+#include "FreeRTOS.h" // IWYU pragma: keep (configASSERT)
+
 /**
  * @brief bsp层整体的初始化
  *
@@ -23,23 +25,24 @@
  */
 void bsp_init()
 {
+  // 每条 init() 单独一行断言：失败就地停机，fault_record 记下的行号直接指出是哪一路没起来
   // ── FreeRTOS 驱动的 CAN ──
-  bsp_can1.init();
-  bsp_can2.init();
-  bsp_can3.init();
+  configASSERT(bsp_can1.init() == Status::OK);
+  configASSERT(bsp_can2.init() == Status::OK);
+  configASSERT(bsp_can3.init() == Status::OK);
 
   // ── FreeRTOS 驱动的 UART ──
-  bsp_uart1.init();
-  bsp_uart3.init();
-  bsp_uart4.init();
-  bsp_uart5.init();
-  bsp_uart7.init();
-  bsp_uart8.init();
-  bsp_uart9.init();
-  bsp_uart10.init();
+  configASSERT(bsp_uart1.init() == Status::OK);
+  configASSERT(bsp_uart3.init() == Status::OK);
+  configASSERT(bsp_uart4.init() == Status::OK);
+  configASSERT(bsp_uart5.init() == Status::OK);
+  configASSERT(bsp_uart7.init() == Status::OK);
+  configASSERT(bsp_uart8.init() == Status::OK);
+  configASSERT(bsp_uart9.init() == Status::OK);
+  configASSERT(bsp_uart10.init() == Status::OK);
 
   // ── 按键（纯软件轮询消抖，200ms 轮询 → 200ms 消抖, 1s 长按）──
-  key_user.init({KEY_GPIO_Port, KEY_Pin, true, 1U, 5U}); // 200ms×1 消抖, 200ms×5=1s 长按
+  configASSERT(key_user.init({KEY_GPIO_Port, KEY_Pin, true, 1U, 5U}) == Status::OK); // 200ms×1 消抖, 200ms×5=1s 长按
 
   // ── 蜂鸣器（TIM12 CH2 PB15 PWM 无源蜂鸣器）──
   bsp_buzzer.init({&htim12, TIM_CHANNEL_2, 6000000UL, 3000UL, 50, 20000, 80, 400, 100});

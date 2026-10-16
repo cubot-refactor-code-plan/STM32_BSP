@@ -1,5 +1,7 @@
 #include "device_cfg.hpp"
 
+#include "FreeRTOS.h" // IWYU pragma: keep (configASSERT)
+
 
 /* ==================== 全局实例化 ==================== */
 
@@ -23,7 +25,7 @@ Lcd lcd;
 void device_init()
 {
   /* LCD 初始化（SPI1 DMA） */
-  lcd.init();
+  configASSERT(lcd.init() == Status::OK); // 失败就地停机，fault_record 记下本行
 
   /* TODO: 电机业务接入时在此初始化（见上方注释） */
 }
