@@ -31,7 +31,7 @@ Bus-Off 且旧 TX 请求已取消；端到端恢复由测试的新反馈验证�
 
 ## 主机状态机测试
 
-运行 `python3 User/App/test/can/test_recovery_host.py`。
+运行 `python3 examples/dm_mc02/app/test/can/test_recovery_host.py`。
 它编译实际 `bsp_can_recovery.cpp`，使用模拟寄存器和 RTOS 时钟验证
 1001 次恢复循环、持续故障节流、TX 取消门控、tick 回绕和未初始化状态。
 主机模拟不验证真实硬件的 TX 取消或 CAN 物理恢复时序；仍须执行实机测试。

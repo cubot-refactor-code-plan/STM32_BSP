@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Compile the production recovery state machine against fake registers/RTOS.
-Run: python3 User/App/test/can/test_recovery_host.py
+Run: python3 examples/dm_mc02/app/test/can/test_recovery_host.py
 """
 from pathlib import Path
 import subprocess
 import tempfile
 
-root = Path(__file__).resolve().parents[4]
+root = Path(__file__).resolve().parents[5]  # 仓库根（库所在处）
 header = r'''
 #pragma once
 #include <cstdint>
@@ -75,7 +75,7 @@ int main() {
 with tempfile.TemporaryDirectory(prefix='can-recovery-') as directory:
     path = Path(directory)
     (path/'bsp_can.hpp').write_text(header)
-    (path/'recovery.cpp').write_text((root/'User/Bsp/bsp_can_recovery.cpp').read_text())
+    (path/'recovery.cpp').write_text((root/'bsp/bsp_can_recovery.cpp').read_text())
     (path/'test.cpp').write_text(test)
     subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Werror',str(path/'recovery.cpp'),str(path/'test.cpp'),'-o',str(path/'test')],check=True)
     subprocess.run([str(path/'test')],check=True)
