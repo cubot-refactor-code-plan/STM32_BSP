@@ -43,8 +43,8 @@ void bsp_init()
   // ── 按键（纯软件轮询消抖，200ms 轮询 → 200ms 消抖, 1s 长按）──
   configASSERT(key_user.init({KEY_GPIO_Port, KEY_Pin, true, 1U, 5U}) == Status::OK); // 200ms×1 消抖, 200ms×5=1s 长按
 
-  // ── 蜂鸣器（TIM12 CH2 PB15 PWM 无源蜂鸣器）──
-  bsp_buzzer.init({&htim12, TIM_CHANNEL_2, 6000000UL, 3000UL, 50, 20000, 80, 400, 100});
+  // ── 蜂鸣器 PWM（TIM12 CH2 PB15；先清 CCR 再启动 → 上电 0% 占空比，不响）──
+  configASSERT(bsp_pwm_buzzer.init() == Status::OK);
 }
 
 
@@ -99,8 +99,14 @@ BspGpio btb_gpio({BTB_GPIO_GPIO_Port, BTB_GPIO_Pin}); // PE14
 
 /* ==================== 蜂鸣器 ==================== */
 
-///< TIM12 CH2 (PB15) PWM 无源蜂鸣器
-BspBuzzer bsp_buzzer;
+/**
+ * @brief 无源蜂鸣器 PWM：TIM12 CH2 PB15
+ *
+ * @note 参数取自 CubeMX（tim.c 的 MX_TIM12_Init）：定时器时钟 275 MHz（APB1 137.5 MHz × 2）、
+ *       PSC = 24-1、ARR = 2000-1。这几个数必须与 CubeMX 一致，否则频率换算是错的；
+ *       旧 bsp_buzzer 按 6 MHz 计数时钟换算，实际是 275 MHz / 24 ≈ 11.46 MHz，音调偏高约 1.9 倍。
+ */
+BspPwm bsp_pwm_buzzer({&htim12, TIM_CHANNEL_2, 275000000UL, 23U, 1999U});
 
 
 /* ==================== 按键 ==================== */

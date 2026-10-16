@@ -16,12 +16,19 @@
 #ifndef __DEVICE_CFG_HPP__
 #define __DEVICE_CFG_HPP__
 
+#include "device_buzzer.hpp"
 #include "status.hpp" // IWYU pragma: keep
 
 
 /* ==================== 函数声明 ==================== */
 
 void device_init();
+
+
+/* ==================== 全局声明 ==================== */
+
+///< 板载无源蜂鸣器，绑定 BSP 层的 bsp_pwm_buzzer
+extern DeviceBuzzer buzzer;
 
 
 #endif // __DEVICE_CFG_HPP__

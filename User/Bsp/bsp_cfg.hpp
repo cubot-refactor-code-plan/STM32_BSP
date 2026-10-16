@@ -11,7 +11,7 @@
 #ifndef __BSP_CFG_HPP__
 #define __BSP_CFG_HPP__
 
-#include "bsp_buzzer.hpp"
+#include "bsp_pwm.hpp"
 #include "bsp_can.hpp"
 #include "bsp_gpio.hpp"
 #include "bsp_key.hpp"
@@ -52,8 +52,8 @@ extern BspGpio dcmi_pwdn;
 extern BspGpio btb_gpio;
 
 
-///< 蜂鸣器
-extern BspBuzzer bsp_buzzer;
+///< 无源蜂鸣器 PWM：TIM12 CH2 PB15（由 Device 层 DeviceBuzzer 驱动）
+extern BspPwm bsp_pwm_buzzer;
 
 ///< 按键
 extern BspKey key_user;
