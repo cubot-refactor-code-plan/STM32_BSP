@@ -31,7 +31,16 @@
 git submodule add <本仓库地址> third_party/stm32_bsp
 ```
 
-在 CubeMX 生成的根 `CMakeLists.txt` 末尾接入库，并加上自己的应用源文件：
+**自动接入**：`tools/integrate.py` 按本节与 1.3 完成宿主工程的适配——检查 1.1 的 CubeMX 前提，改链接脚本、`FreeRTOSConfig.h` / `freertos.c` 的 USER CODE 段、根 `CMakeLists.txt`，复制 `templates/` 的 `board_cfg.*`、`app_main.*`、`hardware_config.h`，并配置 clangd（见本节末条）。所有片段从 `templates/` 读取；每步先判断是否已完成，可重复运行（例如 CubeMX 重新生成后）；只改内容仍是 CubeMX 默认的 USER CODE 段，已有自定义内容就报错并指出要手动合并的位置；有任何错误就不写任何文件；保持各文件原行尾。
+
+```bash
+python3 third_party/stm32_bsp/tools/integrate.py --dry-run   # 在宿主工程根目录：只检查并打印 diff
+python3 third_party/stm32_bsp/tools/integrate.py             # 执行；--help 看 --app-dir / --linker-script / --ram-region 等选项
+```
+
+复制来的 `board_cfg.*` 是 DM-MC02 的句柄与参数：脚本对照本工程 CubeMX 生成的代码，提示不存在的句柄、波特率与 PSC / ARR 不一致，但定时器时钟与具体用哪些外设仍需手动改。2026-10-17 实测：在接入前的全新 CubeMX 工程上运行，结果与按下文手动接入一致（只有链接脚本与 `freertos.c` 里的注释措辞不同），编译 0 warning；再次运行全部跳过。
+
+手动接入的步骤如下。在 CubeMX 生成的根 `CMakeLists.txt` 末尾接入库，并加上自己的应用源文件：
 
 ```cmake
 add_subdirectory(third_party/stm32_bsp)
@@ -188,6 +197,7 @@ stm32_bsp/                    仓库根 = 库
 ├─ device/                    dji_motor、device_buzzer、dm_imu（占位）
 ├─ algorithm/                 pid
 ├─ templates/                 接入用：hardware_config.h、board_cfg.*、app_main.*、FreeRTOSConfig.h / freertos.c USER CODE 片段、链接脚本片段
+├─ tools/                     integrate.py：按 templates/ 自动接入宿主工程（1.2）
 ├─ docs/                      编码规范、器件手册
 └─ examples/
    └─ dm_mc02/                DM-MC02 板的 CubeMX 工程（git mv 进来，保留历史）

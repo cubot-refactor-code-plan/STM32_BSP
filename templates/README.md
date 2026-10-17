@@ -2,6 +2,8 @@
 
 按仓库根 `README.md` 第 1 节的步骤使用；完整可运行的例子见 `examples/dm_mc02/`。
 
+`tools/integrate.py` 读取本目录的文件自动完成下表的接入（见根 `README.md` 1.2）；改模板后脚本随之生效，无需同步修改脚本。脚本按 USER CODE 段名、钩子函数名、`linker_sections.ld` 里的段结构提取片段，改动这些结构时要同时检查脚本。
+
 | 文件 | 放到哪里 | 作用 |
 | --- | --- | --- |
 | `linker_sections.ld` | 宿主链接脚本 `SECTIONS { }` 里、`.data` 之前 | `.dma_buffer`（串口实例，DMA 可达的 RAM_D1）与 `.noinit`（`fault_record`，复位保留）。缺了 CMake 配置阶段报错 |
