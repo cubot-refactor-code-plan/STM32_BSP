@@ -15,12 +15,12 @@ PID::PID(const Config& cfg) : _config(cfg)
 
 void PID::calc_input(float target, float feedback)
 {
-  _input.last_target  = _input.target;
+  _input.last_feedback  = _input.feedback;
   _input.last_error   = _input.error;
   _input.target       = target;
   _input.feedback     = feedback;
   _input.error        = _input.target - _input.feedback;
-  _input.delta_target = _input.target - _input.last_target;
+  _input.delta_feedback = _input.target - _input.last_feedback;
   _input.delta_error  = _input.error - _input.last_error;
 }
 
@@ -29,7 +29,7 @@ void PID::calc_d_term()
   switch (_diff_mode)
   {
     case DiffMode::DIFF_TARGET:
-      _term.d_term = _config.kd * _input.delta_target; // 微分先行
+      _term.d_term = _config.kd * _input.delta_feedback; // 微分先行
       break;
     case DiffMode::DIFF_ERROR:
       _term.d_term = _config.kd * _input.delta_error; // 常规微分
@@ -107,7 +107,7 @@ float PID::calc(float target, float feedback, float df_dt)
   // 外部导入的目标值一阶导数直接作为微分输入
   if (_diff_mode == DiffMode::DIFF_TARGET)
   {
-    _input.delta_target = df_dt;
+    _input.delta_feedback = df_dt;
   }
   else if (_diff_mode == DiffMode::DIFF_ERROR)
   {

@@ -59,9 +59,9 @@ struct PidInput
   float target       = 0.0f; ///< 当前目标值
   float feedback     = 0.0f; ///< 当前反馈值
   float error        = 0.0f; ///< 当前误差，error = target - feedback
-  float last_target  = 0.0f; ///< 上一目标值
+  float last_feedback  = 0.0f; ///< 上一反馈值
   float last_error   = 0.0f; ///< 上一误差值
-  float delta_target = 0.0f; ///< 目标值微分，delta_target = target - last_target
+  float delta_feedback = 0.0f; ///< 反馈值微分，delta_feedback = feedback - last_feedback
   float delta_error  = 0.0f; ///< 误差值微分，delta_error = error - last_error
 };
 

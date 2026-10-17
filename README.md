@@ -157,8 +157,7 @@ extern "C" void chassis_task(void *)
 | Device | `dji_motor` | M3508 / M2006 / GM6020，每电机一个对象 | C620 + M3508 实测（2026-09-01 / 10-01，当时版本；本轮改动后未接电机复测） |
 | Device | `device_buzzer` | 无源蜂鸣器（音调 / 音量 / 时长） | 实测 |
 | Device | `dm_imu` | 空文件占位，待按 CAN 节点层重写 | — |
-| Algorithm | `pid` | 位置式 PID | 未测；已知问题：“微分先行”实为对目标值求导 |
-
+| Algorithm | `pid` | 位置式 PID | 未测 |
 | Service | `system` / `hardware_config_defaults` | 库入口 `system_init()` / `system_start()` 与库任务 `sys_task`、`can_rx_task`、`can_tx_task`（遍历 `BspCan` / `BspUartBase` 登记表）；可配置项默认值与 `hardware_config.h` 读取 | 内部回环 + 串口跳线回归，默认 / 覆盖配置对比（2026-10-17） |
 
 属于示例板的代码在 `examples/dm_mc02/app/`：`board/bsp_cfg.*`、`board/device_cfg.*`（实例与初始化，包含本板 CubeMX 头文件）、`api_main`（`all_init()` 按上面的顺序调库入口）、`task/key_task`、`test/`。
