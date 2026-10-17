@@ -1,5 +1,6 @@
 CompileFlags:
   # 仓库根是库，本身不能单独配置；编辑库代码时借用示例工程的编译数据库（先编译一次示例）
+  # 作为 submodule 接入宿主工程时这条路径不存在：宿主要用 clangd 参数 --compile-commands-dir 覆盖（见 README 1.2 的 clangd 一条）
   CompilationDatabase: examples/dm_mc02/build/Debug
 
 Completion:

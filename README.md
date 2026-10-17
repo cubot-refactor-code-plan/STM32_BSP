@@ -46,6 +46,16 @@ target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)  # BspUart::
 - 仓库根不能单独配置（会报错提示）；必须在 `add_subdirectory(cmake/stm32cubemx)` 之后接入。
 - 库只包含 `stm32h7xx_hal.h`，不包含 CubeMX 按外设生成的 `main.h` / `fdcan.h` / `usart.h` / `tim.h`，也不引用任何板级实例；句柄与引脚宏由用户的板级配置自己包含。
 - 示例 `examples/dm_mc02/CMakeLists.txt` 就是这样接入的（库目录在工程之上，所以多一个 binary 目录参数）。
+- **clangd**：CubeMX 的 CMake 预设把 `compile_commands.json` 放在 `build/Debug/`，clangd 默认只在祖先目录及其 `build/` 下找，找不到就按主机 x86 参数解析，宿主代码报 `fdcan.h` 找不到、`BspCan` / `hfdcan1` 未定义；库代码则会命中本库根目录的 `.clangd`，它指向宿主工程里不存在的 `examples/dm_mc02/build/Debug`，同样解析失败。解决：宿主工程 `.vscode/settings.json` 用命令行参数指定数据库（命令行参数优先于 `.clangd` 的 `CompilationDatabase`，库代码也会用宿主的数据库），并让 clangd 向交叉编译器查询系统头文件路径（先 `cmake --preset Debug` 一次）：
+
+  ```json
+  "clangd.arguments": [
+      "--compile-commands-dir=${workspaceFolder}/build/Debug",
+      "--query-driver=/opt/arm-none-eabi/bin/arm-none-eabi-*"   // 改成本机工具链路径
+  ]
+  ```
+
+  2026-10-17 在全新 CubeMX 宿主工程上实测（clangd 22.1.6 `--check`）：宿主 `Core/`、`app/` 与库源文件均 0 诊断。
 
 ### 1.3 修改的配置（模板与片段都在 `templates/`，索引见 `templates/README.md`）
 
