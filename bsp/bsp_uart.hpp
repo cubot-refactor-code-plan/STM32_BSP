@@ -12,8 +12,8 @@
  * @details 接收端用 IDLE 中断判断一帧收完，发送端由 TX Complete 中断接着发下一批，
  *          收发都走 DMA，不需要 CPU 逐字节搬运。
  *
- * @note 模板参数是缓冲区大小（字节）。DMA 收发缓冲区与流缓冲区都用这个尺寸，
- *       所以单次 send() 也不能超过它。
+ * @note 模板参数是缓冲区大小（字节）。DMA 收发缓冲区与发送流缓冲区用这个尺寸，单次 send() 不能超过它；
+ *       接收流缓冲区是它的 2 倍（DMA 缓冲写满时一次投递 BUFFER_SIZE 字节，留出余量给紧接着的 IDLE 投递）。
  *
  * @note 用法：
  *
@@ -36,10 +36,9 @@
  *       printf() 另有 _printf_lock 保护格式化缓冲。三把锁的取用顺序固定为 printf → write → tx，不会死锁。
  * @note 中断侧从不往流缓冲区写：DMA 启动失败的那一包留在 _tx_dma_buffer 里，下次启动时先发它，字节顺序不变。
  *
- * @warning 已知限制：本工程 7 路 TX DMA 都开着 DMA FIFO（CubeMX 配置，按用户决定保留）。
- *          DMA 会把字节预读进自己的 FIFO，剩余计数（NDTR）已经把它们算作“发出”；
- *          tx_recover() 中止卡死的发送后按 NDTR 续发，这部分预读字节会丢（实测最多约 8~16 字节/次）。
- *          只影响「卡死后恢复」这条路径，正常发送不受影响；改成直接模式（FIFOMode = DISABLE）可消除。
+ * @warning 已知限制：TX DMA 开着 DMA FIFO（CubeMX 配置）时，DMA 会把字节预读进自己的 FIFO，剩余计数（NDTR）
+ *          已经把它们算作“发出”；init() 还会打开 UART 硬件 FIFO（16 字节）。tx_recover() 中止卡死的发送后按 NDTR 续发，
+ *          DMA FIFO 预读的字节与 UART TX FIFO 里的字节会丢。只影响「卡死后恢复」这条路径，正常发送不受影响。
  *
  * @note 所有超时参数单位都是毫秒；传 portMAX_DELAY 表示一直等。
  */
@@ -202,10 +201,12 @@ public:
    * @brief 创建流缓冲区和两把锁，然后启动 IDLE 接收
    *
    * @note 在初始化阶段调用（system_init() 之后、system_start() 之前；调度器启动前也可以创建 FreeRTOS 对象）。
-   *       可以重复调用：开头会先把上一次的资源释放掉。
+   *       可以重复调用：已初始化的实例先停掉收发、释放上一次的资源再重建；
+   *       此时不能有任务阻塞在本实例的 send() / receive() 上（流缓冲区会被删除重建）。
    *
    * @return OK=成功；IO_ERROR=资源创建失败或接收没能启动；
-   *         BAD_ARG=句柄为空、已被另一个实例登记，或实例不在 DMA 可达的内存里（没放进 .dma_buffer）；
+   *         BAD_ARG=句柄为空、已被另一个实例登记、没配 RX DMA（或启用发送却没配 TX DMA），
+   *         或实例不在 DMA 可达的内存里（没放进 .dma_buffer）；
    *         FULL=串口登记表已满
    * @note 在打开接收中断之前把本实例登记进 BspUartBase 的登记表，HAL 回调靠它找到本实例。
    */
@@ -334,6 +335,8 @@ private:
 
   // 成员变量
 
+  static constexpr size_t RX_STREAM_SIZE = 2U * BUFFER_SIZE; ///< 接收流缓冲区容量（见 init()）
+
   StreamBufferHandle_t _rx_stream_buffer = nullptr; ///< 接收流缓冲区
   StreamBufferHandle_t _tx_stream_buffer = nullptr; ///< 发送流缓冲区
   SemaphoreHandle_t    _tx_write_lock    = nullptr; ///< 发送入队锁：保证发送流缓冲区只有一个写者
@@ -361,7 +364,8 @@ private:
   volatile uint32_t _tx_error_cnt      = 0; ///< TX 进错误回调的次数
   volatile uint32_t _tx_dma_repair_cnt = 0; ///< 复位卡死的 TX DMA 句柄的次数
 
-  volatile TickType_t _tx_last_activity_tick = 0; ///< 最近一次成功启动发送（或启动失败留包）的时刻，tx_recover() 用它判断卡死
+  volatile TickType_t _tx_last_activity_tick = 0; ///< 最近一次发送有推进（启动 / DMA 计数变化）的时刻，tx_recover() 用它判断卡死
+  uint32_t            _tx_last_ndtr          = 0; ///< tx_recover() 上次看到的 TX DMA 剩余计数（只有 tx_recover() 读写）
 
   // _tx_dma_buffer 里还没确认发完的那一段：[_tx_chunk_off, _tx_chunk_off + _tx_chunk_len)。
   // 只在通道空闲时由任务（持 _tx_lock）或 TX 完成中断改写，两者不会同时发生。

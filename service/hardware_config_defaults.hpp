@@ -64,12 +64,15 @@
 
 /** @brief 每路 CAN 的接收队列深度（帧）：ISR 写入，can_rx_task 每毫秒取走 */
 #ifndef CAN_RX_QUEUE_FRAMES
-#  define CAN_RX_QUEUE_FRAMES 8
+#  define CAN_RX_QUEUE_FRAMES 16 // 1 Mbps 满载约 8~9 帧/ms，can_rx_task 每 1 ms 取一次，8 帧会溢出（2026-10-17 实测）
 #endif
 
 /** @brief 每路 CAN 的回退队列深度（帧）：没有接收节点认领的帧，供 BspCan::receive() 读取 */
 #ifndef CAN_RX_RETURN_FRAMES
-#  define CAN_RX_RETURN_FRAMES 8
+#  define CAN_RX_RETURN_FRAMES 16 // 应不小于 CAN_RX_DISPATCH_PER_TICK：一轮分发可能一次推进这么多帧
+#endif
+#ifndef CAN_RX_DISPATCH_PER_TICK
+#  define CAN_RX_DISPATCH_PER_TICK 16 // can_rx_task 每 1 ms 每条总线最多分发的帧数（原写死 8，低于 1 Mbps 满载帧率）
 #endif
 
 /** @brief 每路 CAN 的发送队列深度（帧） */
@@ -121,6 +124,9 @@
 #endif
 
 /** @brief BspUart::printf() 取格式化缓冲锁、以及入队的等待上限 (ms)；超时返回错误，不长时间挂住调用任务 */
+#ifndef UART_ENABLE_FIFO
+#  define UART_ENABLE_FIFO 1 // BspUart::init() 打开 UART 硬件 FIFO（16 字节）；0 = 保持 CubeMX 的设置
+#endif
 #ifndef UART_PRINTF_TIMEOUT_MS
 #  define UART_PRINTF_TIMEOUT_MS 10
 #endif
@@ -131,6 +137,7 @@
 static_assert(SYS_TASK_STACK >= 128 && CAN_TASK_STACK >= 128, "hardware_config.h: 库任务栈深至少 128 字");
 static_assert(CAN_MAX_INSTANCES >= 1 && CAN_MAX_INSTANCES <= 3, "hardware_config.h: CAN_MAX_INSTANCES 取 1~3（STM32H7 只有 FDCAN1~3）");
 static_assert(CAN_RX_QUEUE_FRAMES >= 1 && CAN_RX_RETURN_FRAMES >= 1 && CAN_TX_QUEUE_FRAMES >= 1, "hardware_config.h: CAN 队列深度至少 1 帧");
+static_assert(CAN_RX_DISPATCH_PER_TICK >= 1 && CAN_RX_DISPATCH_PER_TICK <= 64, "hardware_config.h: CAN_RX_DISPATCH_PER_TICK 取 1~64");
 static_assert(CAN_RX_NODE_MAX >= 1 && CAN_RX_NODE_MAX <= 255, "hardware_config.h: CAN_RX_NODE_MAX 取 1~255（计数为 uint8_t）");
 static_assert(CAN_TX_NODE_MAX >= 1 && CAN_TX_NODE_MAX <= 255, "hardware_config.h: CAN_TX_NODE_MAX 取 1~255（计数为 uint8_t）");
 static_assert(CAN_TX_HEARTBEAT_MS >= 1, "hardware_config.h: CAN_TX_HEARTBEAT_MS 至少 1 ms");

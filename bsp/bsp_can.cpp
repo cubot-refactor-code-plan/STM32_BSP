@@ -249,11 +249,14 @@ Status BspCan::config_filter()
   if (HAL_FDCAN_ConfigFilter(_hfdcan, &sFilterConfig) != HAL_OK)
     return Status::IO_ERROR;
 
+  // 远程帧直接由硬件拒收：本驱动只处理 8 字节数据帧，没有任何地方消费远程帧。
+  // 注意 HAL 的 FDCAN_FILTER_REMOTE 意思是“远程帧按数据帧一样过滤”（即接收），拒收要用 FDCAN_REJECT_REMOTE ——
+  // 原来用的 FILTER_REMOTE 让远程帧带着无意义的数据进了 receive() 的回退缓冲（2026-10-17 实测）。
   if (HAL_FDCAN_ConfigGlobalFilter(_hfdcan,
                                    FDCAN_ACCEPT_IN_RX_FIFO0,
                                    FDCAN_ACCEPT_IN_RX_FIFO0,
-                                   FDCAN_FILTER_REMOTE,
-                                   FDCAN_FILTER_REMOTE)
+                                   FDCAN_REJECT_REMOTE,
+                                   FDCAN_REJECT_REMOTE)
       != HAL_OK)
   {
     return Status::IO_ERROR;
@@ -284,13 +287,25 @@ Status BspCan::start_reception()
 /**
  * @brief 触发一次发送（任务上下文调用）
  */
+/**
+ * @brief 硬件 TX FIFO / 队列还有空位
+ *
+ * @note 用 TXFQS.TFQF（满标志）判断，FIFO 模式与队列模式都有效。原来用 HAL_FDCAN_GetTxFifoFreeLevel()
+ *       读 TFFL，而 TFFL 在 Tx Queue 模式（CubeMX TxFifoQueueMode = Queue，TXBC.TFQM = 1）下恒读 0 ——
+ *       配成队列模式时本驱动一帧都发不出去（2026-10-17 运行中切到队列模式实测）。
+ */
+bool BspCan::tx_hw_has_room() const
+{
+  return (_hfdcan->Instance->TXFQS & FDCAN_TXFQS_TFQF) == 0U;
+}
+
 void BspCan::trigger_tx()
 {
   if (_tx_message_buffer == nullptr)
     return;
 
   taskENTER_CRITICAL();
-  if (tx_available() && HAL_FDCAN_GetTxFifoFreeLevel(_hfdcan) > 0)
+  if (tx_available() && tx_hw_has_room())
   {
     CanTxMsg txMsg;
     size_t   len = xMessageBufferReceive(_tx_message_buffer, &txMsg, sizeof(CanTxMsg), 0);
@@ -323,7 +338,7 @@ void BspCan::trigger_tx_from_isr(BaseType_t *pxHigherPriorityTaskWoken)
   if (_tx_message_buffer == nullptr)
     return;
 
-  if (tx_available() && HAL_FDCAN_GetTxFifoFreeLevel(_hfdcan) > 0)
+  if (tx_available() && tx_hw_has_room())
   {
     CanTxMsg txMsg;
     size_t   len = xMessageBufferReceiveFromISR(_tx_message_buffer, &txMsg, sizeof(CanTxMsg), pxHigherPriorityTaskWoken);
@@ -377,7 +392,15 @@ void BspCan::process_fifo0_isr()
       ++diagnostics.rx_len_drop;
       continue;
     }
-    memcpy(rxMsg.data, raw, sizeof(rxMsg.data));
+    // 只拷 DLC 个字节：raw 是栈上的缓冲，DLC < 8 时后面是上一帧 / 其他函数留下的内容，
+    // 原来固定拷 8 字节会把这些旧数据带进 data[DLC..7]（2026-10-17 实测）。rxMsg 已清零，尾部保持 0。
+    static const uint32_t dlc_codes[9] = {FDCAN_DLC_BYTES_0, FDCAN_DLC_BYTES_1, FDCAN_DLC_BYTES_2,
+                                          FDCAN_DLC_BYTES_3, FDCAN_DLC_BYTES_4, FDCAN_DLC_BYTES_5,
+                                          FDCAN_DLC_BYTES_6, FDCAN_DLC_BYTES_7, FDCAN_DLC_BYTES_8};
+    uint32_t len = 0;
+    while (len < 8U && dlc_codes[len] != rxMsg.header.DataLength)
+      ++len;
+    memcpy(rxMsg.data, raw, len);
 
     if (xMessageBufferSendFromISR(_rx_message_buffer, &rxMsg, sizeof(rxMsg),
                                   &xHigherPriorityTaskWoken) != sizeof(rxMsg))

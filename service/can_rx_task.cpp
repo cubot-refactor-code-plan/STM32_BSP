@@ -26,8 +26,9 @@ extern "C" void can_rx_task(void *argument)
           continue;
         }
         // 即使没有节点也要转发原始帧，保证 receive() 仍可使用。
-        // 每轮每条总线最多处理 8 帧，避免某条总线持续占用任务。
-        for (uint32_t i = 0; i < 8U; ++i)
+        // 每轮每条总线最多处理 CAN_RX_DISPATCH_PER_TICK 帧（默认 16），避免某条总线持续占用任务；
+        // 要高于总线满载帧率（1 Mbps 约 8~9 帧/ms），否则接收队列必然溢出。
+        for (uint32_t i = 0; i < CAN_RX_DISPATCH_PER_TICK; ++i)
         {
           CanRxMsg rx = {};
           if (xMessageBufferReceive(can->_rx_message_buffer, &rx, sizeof(rx), 0U) != sizeof(rx))
@@ -52,6 +53,7 @@ extern "C" void can_rx_task(void *argument)
           if (!consumed && xMessageBufferSend(can->_rx_return_buffer, &rx, sizeof(rx), 0U) != sizeof(rx))
           {
             // 回退消费者滞后时丢弃本帧并记录 FULL，不阻塞其他节点的解算。
+            ++can->diagnostics.rx_return_dropped;
             SysFlagSet(Status::FULL);
           }
         }

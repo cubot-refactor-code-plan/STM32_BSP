@@ -172,6 +172,7 @@ public:
     volatile uint32_t tx_dropped = 0;
     volatile uint32_t rx_dropped = 0;
     volatile uint32_t rx_len_drop = 0; ///< DLC > 8（FD 帧或经典帧 DLC 9~15）而被丢弃的帧数
+    volatile uint32_t rx_return_dropped = 0; ///< 没有节点收下、回退缓冲又满（receive() 消费跟不上）而丢弃的帧数
     volatile uint32_t recovery_max_ticks = 0;
     volatile bool recovering = false;
   } diagnostics;
@@ -182,6 +183,7 @@ private:
   TickType_t _recovery_started = 0;
   TickType_t _recovery_attempted = 0;
   bool tx_available() const;
+  bool tx_hw_has_room() const; ///< 硬件 TX FIFO / 队列未满（两种模式都有效）
 
   CanRxNode *rx_head; ///< 本总线接收节点；运行期间只读
   CanTxNode *tx_head; ///< 本总线发送节点；运行期间只读

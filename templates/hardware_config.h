@@ -22,8 +22,9 @@
 /* ==================== CAN ==================== */
 
 // #define CAN_MAX_INSTANCES          3                      /* BspCan 实例上限（1~3） */
-// #define CAN_RX_QUEUE_FRAMES        8                      /* 每路接收队列（帧），ISR → CAN 接收任务 */
-// #define CAN_RX_RETURN_FRAMES       8                      /* 每路回退队列（帧），没有接收节点认领的帧，BspCan::receive() 读取 */
+// #define CAN_RX_QUEUE_FRAMES        16                     /* 每路接收队列（帧），ISR → CAN 接收任务；1 Mbps 满载约 8~9 帧/ms */
+// #define CAN_RX_RETURN_FRAMES       16                     /* 每路回退队列（帧），没有接收节点认领的帧，BspCan::receive() 读取；应 ≥ CAN_RX_DISPATCH_PER_TICK */
+// #define CAN_RX_DISPATCH_PER_TICK   16                     /* CAN 接收任务每 1 ms 每路最多分发的帧数（1~64），要高于总线满载帧率 */
 // #define CAN_TX_QUEUE_FRAMES        8                      /* 每路发送队列（帧） */
 // #define CAN_RX_NODE_MAX            50                     /* 接收节点总数上限（全部总线合计，≤255） */
 // #define CAN_TX_NODE_MAX            50                     /* 发送节点总数上限（全部总线合计，≤255） */

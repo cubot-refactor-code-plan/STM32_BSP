@@ -60,7 +60,11 @@ bool dma_reachable(const void *addr)
 bool uart_irqn(const USART_TypeDef *instance, IRQn_Type *irqn)
 {
   if (instance == USART1)  { *irqn = USART1_IRQn;  return true; }
+  if (instance == USART2)  { *irqn = USART2_IRQn;  return true; }
   if (instance == USART3)  { *irqn = USART3_IRQn;  return true; }
+#if defined(USART6)
+  if (instance == USART6)  { *irqn = USART6_IRQn;  return true; }
+#endif
   if (instance == UART4)   { *irqn = UART4_IRQn;   return true; }
   if (instance == UART5)   { *irqn = UART5_IRQn;   return true; }
   if (instance == UART7)   { *irqn = UART7_IRQn;   return true; }
@@ -95,6 +99,28 @@ bool repair_dma_handle(DMA_HandleTypeDef *hdma)
   hdma->State     = HAL_DMA_STATE_READY;
   __HAL_UNLOCK(hdma);
   return true;
+}
+
+/**
+ * @brief 停掉 DMA 流并把 HAL 句柄复位到 READY（运行中重新 init() 用，可在调度器启动前调用）
+ *
+ * @note HAL_DMA_Abort() 等 EN 清零最多 5 ms，超时就把句柄留在 ERROR、之后 HAL_DMA_Start_IT() 一律失败；
+ *       repair_dma_handle() 又只在 EN 已清时才复位。2026-10-17 实测运行中再 init() 时正好卡在这里
+ *       （句柄 ERROR、流稍后才停），所以这里请求停流后有限时间内等 EN 清零，再复位句柄。
+ */
+void stop_dma_stream(DMA_HandleTypeDef *hdma)
+{
+  if (hdma == nullptr || IS_DMA_STREAM_INSTANCE(hdma->Instance) == 0U)
+  {
+    return;
+  }
+  DMA_Stream_TypeDef *const s = (DMA_Stream_TypeDef *)hdma->Instance;
+  __HAL_DMA_DISABLE(hdma);
+  const uint32_t t0 = HAL_GetTick();
+  while ((s->CR & DMA_SxCR_EN) != 0U && (HAL_GetTick() - t0) < 10U)
+  {
+  }
+  (void)repair_dma_handle(hdma);
 }
 } // namespace
 
@@ -249,9 +275,11 @@ BspUart<BUFFER_SIZE>::BspUart(const Config &cfg) : BspUartBase(cfg.huart), _tran
 /**
  * @brief 创建 FreeRTOS 对象并启动 IDLE 接收（须在STM32初始化之后调用）
  *
- * @return Status OK=成功；BAD_ARG=句柄为空；IO_ERROR=资源创建或接收启动失败
+ * @return Status OK=成功；BAD_ARG=句柄为空、没配 RX DMA（或启用发送却没配 TX DMA）、实例不在 DMA 可达内存；
+ *         IO_ERROR=资源创建或接收启动失败
  *
- * @note 可重复调用：开头先 cleanup_resources() 释放上一次的资源，避免指针被覆盖造成泄漏。
+ * @note 可重复调用：已初始化过的实例先停掉正在进行的收发，再释放上一次的资源重建。
+ *       调用方须保证此时没有任务阻塞在本实例的 send() / receive() 上（流缓冲区会被删除重建）。
  *       任一步失败都会走 abort_reception() + cleanup_resources()，不留下半初始化状态。
  */
 template <size_t BUFFER_SIZE>
@@ -263,20 +291,53 @@ Status BspUart<BUFFER_SIZE>::init()
     return Status::BAD_ARG;
   }
 
-  // 收发缓冲是对象成员，DMA 直接读写它们：实例不在 DMA 可达的内存里（忘了放进 .dma_buffer，
-  // 或链接脚本把 .dma_buffer 放进了 DTCM）就拒绝，免得运行时静默收发不了
-  if ((_huart->hdmarx != nullptr || _huart->hdmatx != nullptr) &&
-      (!dma_reachable(_rx_dma_buffer) || !dma_reachable(_tx_dma_buffer)))
+  // 接收走 IDLE + DMA，必须有 RX DMA；启用发送时必须有 TX DMA。
+  // 没配 DMA 时 HAL_UARTEx_ReceiveToIdle_DMA() 照样返回 OK（只是不搬数据），init() 会“成功”但永远收不到（2026-10-17 实测）
+  if (_huart->hdmarx == nullptr || (_transmit_enable && _huart->hdmatx == nullptr))
   {
     return Status::BAD_ARG;
   }
 
-  // 可重复调用：先释放上一次残留的软件资源，避免二次 init() 直接覆盖指针造成泄漏
-  // （与 bsp_can::init() 的可重入行为保持一致）
-  cleanup_resources();
+  // 收发缓冲是对象成员，DMA 直接读写它们：实例不在 DMA 可达的内存里（忘了放进 .dma_buffer，
+  // 或链接脚本把 .dma_buffer 放进了 DTCM）就拒绝，免得运行时静默收发不了
+  if (!dma_reachable(_rx_dma_buffer) || !dma_reachable(_tx_dma_buffer))
+  {
+    return Status::BAD_ARG;
+  }
 
-  // 创建接收流缓冲区
-  _rx_stream_buffer = xStreamBufferCreate(BUFFER_SIZE, 1);
+  // 已初始化过（运行中再次 init()）：先停掉本实例的收发再释放资源。
+  // 不停的话 RX 仍是 BUSY_RX，后面重新启动接收必然失败，而旧资源已经释放 —— 实测 init() 返回 IO_ERROR、实例从此失效。
+  if (_rx_stream_buffer != nullptr || _tx_stream_buffer != nullptr)
+  {
+    IRQn_Type  irqn    = static_cast<IRQn_Type>(0);
+    const bool has_irq = uart_irqn(_huart->Instance, &irqn);
+    if (has_irq)
+    {
+      HAL_NVIC_DisableIRQ(irqn);
+    }
+    abort_reception();
+    if (_transmit_enable)
+    {
+      (void)HAL_UART_AbortTransmit(_huart);
+    }
+    stop_dma_stream(_huart->hdmarx);
+    stop_dma_stream(_huart->hdmatx);
+    _huart->RxState   = HAL_UART_STATE_READY; // 中止若因 DMA 超时提前返回，HAL 状态可能停在 BUSY
+    _huart->gState    = HAL_UART_STATE_READY;
+    _huart->ErrorCode = HAL_UART_ERROR_NONE;
+    if (has_irq)
+    {
+      HAL_NVIC_EnableIRQ(irqn);
+    }
+  }
+  cleanup_resources();
+  _tx_idle_pending_seen = false;
+
+  // 创建接收流缓冲区：容量是 DMA 缓冲区的 2 倍。
+  // DMA 缓冲写满（TC）时一次投递 BUFFER_SIZE 字节；流缓冲区若也只有 BUFFER_SIZE，就被一次填满，
+  // 接收任务还没来得及读，紧接着的 IDLE 投递（帧尾 1~2 字节）就被丢掉 —— 2026-10-17 实测 921600 下
+  // 随机长度帧每 1000 帧丢 2~10 个字节（记在 rx_drop_bytes），详见宿主工程 docs/bsp_test/uart_u7_u10.md。
+  _rx_stream_buffer = xStreamBufferCreate(RX_STREAM_SIZE, 1);
   if (_rx_stream_buffer == nullptr)
   {
     cleanup_resources();     // 清理已创建的资源
@@ -328,9 +389,13 @@ Status BspUart<BUFFER_SIZE>::init()
   }
 
   // 打开 UART 硬件 FIFO。CubeMX 默认把它关掉，此时接收只有 RDR 一级缓冲：
-  // 只要 DMA 晚一点来搬（多路 DMA 抢总线仲裁时就可能），下一个字节到达就 ORE 丢掉，
-  // 整条接收流随之错位。FIFO 有 16 字节，能吸收这段搬运抖动。
-  // (void)HAL_UARTEx_EnableFifoMode(_huart);
+  // IDLE / TC 之后到重新启动 DMA 之间（中断里先投递流缓冲区再重启，Debug 构建要几~十几 µs），
+  // 再来第 2 个字节就 ORE；ORE 发生时 HAL 已关了错误中断，arm_reception() 又清掉 ORE 标志 —— 静默丢字节。
+  // 2026-10-17 实测：不开 FIFO 时连续流在 2 Mbps 以上几乎全丢（ORE），开了之后 4 Mbps 也基本无损。
+  // 代价：tx_recover() 中止发送时会清掉 TX FIFO 里最多 16 字节（只在卡死恢复路径上）。
+#if UART_ENABLE_FIFO
+  (void)HAL_UARTEx_EnableFifoMode(_huart);
+#endif
 
   // 先登记再开接收中断：HAL 回调靠登记表找到本实例
   const Status reg = register_self();
@@ -581,7 +646,19 @@ bool BspUart<BUFFER_SIZE>::tx_recover()
   {
     _tx_idle_pending_seen = false; // 通道在忙，「空闲但有数据」的观察作废
 
-    if ((xTaskGetTickCount() - _tx_last_activity_tick) >= pdMS_TO_TICKS(stall_ms))
+    // 卡死按“有没有在推进”判断，推进就刷新时刻：DMA 剩余计数变了，或者 UART 还在往外移位（TC 未置位）。
+    // 原来只看本段启动后过了多久，阈值按 Config::baudrate 算 —— Config 填错（或实际波特率被改低）时，
+    // 正常发送也被当成卡死中止；开了 UART FIFO 后中止还会清掉 FIFO 里的字节（2026-10-17 实测 U15：150 帧丢 97 帧）。
+    // 只看计数不够：一段的末尾计数已是 0、UART / DMA FIFO 里的字节还在发，相邻两次巡检若都落在段尾会误判（实测）。
+    // 真卡死时两条都不成立：DMAT 被清 → 计数不动且移位完后 TC 置位；完成中断丢失 → 计数 0 且 TC 已置位。
+    const uint32_t ndtr     = (_huart->hdmatx != nullptr) ? static_cast<uint32_t>(__HAL_DMA_GET_COUNTER(_huart->hdmatx)) : 0U;
+    const bool     shifting = (_huart->Instance->ISR & USART_ISR_TC) == 0U;
+    if (ndtr != _tx_last_ndtr || shifting)
+    {
+      _tx_last_ndtr          = ndtr;
+      _tx_last_activity_tick = xTaskGetTickCount();
+    }
+    else if ((xTaskGetTickCount() - _tx_last_activity_tick) >= pdMS_TO_TICKS(stall_ms))
     {
       // ② 通道忙但长时间没推进：中止，再按 DMA 剩余计数算出这一段已发出多少。
       //    先中止再读计数：中止后 DMA 停住，读到的剩余数才是准的（中止前读，之后可能又发出几个字节，续发时就会重复）。
@@ -681,6 +758,19 @@ void BspUart<BUFFER_SIZE>::on_idle_isr(uint16_t size, BaseType_t *pxHigherPriori
   if (_huart->RxEventType == HAL_UART_RXEVENT_HT)
   {
     return;
+  }
+
+  // IDLE 事件：HAL 先读 DMA 剩余计数算出 size，再中止 DMA。两步之间若下一包的首字节正好到达，
+  // DMA 会在停下之前把它搬进缓冲（位于 size 之后），size 却没算它 —— 重新挂接收后它被覆盖，静默丢 1 字节。
+  // 2026-10-17 实测 4 Mbps 连续流：发送端分段的空隙触发帧中间的 IDLE，丢的正是下一段的首字节。
+  // 中止之后流已停，此时的剩余计数才准：按它重算（TC 事件剩余计数为 0，结果不变）。
+  if (_huart->hdmarx != nullptr)
+  {
+    const uint32_t left = __HAL_DMA_GET_COUNTER(_huart->hdmarx);
+    if (left <= BUFFER_SIZE && (BUFFER_SIZE - left) > size)
+    {
+      size = static_cast<uint16_t>(BUFFER_SIZE - left);
+    }
   }
 
   // 到此处 RxState 已为 READY：HAL 在 IDLE/TC 事件中已停掉 RX DMA，
