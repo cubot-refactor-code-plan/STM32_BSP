@@ -18,7 +18,7 @@
 | 工具链 | Project Manager → Toolchain = **CMake** | 库以 CMake 子目录方式接入，依赖 CubeMX 生成的 `stm32cubemx` INTERFACE 目标 |
 | RTOS | FreeRTOS，**CMSIS_V2** 接口；tick **1 kHz** | 代码里有 `static_assert(configTICK_RATE_HZ == 1000)` |
 | FreeRTOS 钩子 | `configCHECK_FOR_STACK_OVERFLOW = 2`、`configUSE_MALLOC_FAILED_HOOK = 1` | 钩子里调库的 `fault_on_stack_overflow()` / `fault_on_malloc_failed()` 记录现场 |
-| HAL 时基 | 不用 SysTick（选一个空闲定时器） | SysTick 给 FreeRTOS |
+| HAL 时基 | 不用 SysTick（选一个空闲定时器），**该定时器中断优先级要高于串口 / CAN 中断**（数值小于 5，如 4；CubeMX 默认 15） | SysTick 给 FreeRTOS；HAL 在串口中断里调用的 `HAL_DMA_Abort()` 靠 `HAL_GetTick()` 超时，时基优先级低时一旦命中 HAL 的读-改-写竞争就整机卡死（见 3.6） |
 | FDCAN | 经典 CAN、RX FIFO0；开中断 0 / 1 | `BspCan` 用 FIFO0 收、TX FIFO 发、TX-FIFO-EMPTY 中断续发 |
 | UART | 需要的串口开 **RX DMA + TX DMA + 全局中断**（只收的串口可不配 TX DMA） | `BspUart` 用 IDLE + DMA 收、DMA 发 |
 | TIM PWM | 需要的通道配成 PWM，记下定时器时钟、PSC、ARR | `BspPwm` 的参数全部由用户配置传入 |
@@ -129,7 +129,8 @@ target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)  # BspUart::
    | `SYS_TASK_PRIORITY` / `_STACK` | `tskIDLE_PRIORITY + 7` / 256 字 | 系统维护任务 |
    | `CAN_TASK_PRIORITY` / `_STACK` | `tskIDLE_PRIORITY + 8` / 512 字 | CAN 收 / 发任务（接收节点回调在 CAN 接收任务里执行） |
    | `CAN_MAX_INSTANCES` | 3 | `BspCan` 登记表容量（1~3） |
-   | `CAN_RX_QUEUE_FRAMES` / `_RX_RETURN_FRAMES` / `_TX_QUEUE_FRAMES` | 8 / 8 / 8 | 每路 CAN 的接收、回退（无人认领的帧）、发送队列深度 |
+   | `CAN_RX_QUEUE_FRAMES` / `_RX_RETURN_FRAMES` / `_TX_QUEUE_FRAMES` | 16 / 16 / 8 | 每路 CAN 的接收、回退（无人认领的帧）、发送队列深度（接收两项 2026-10-17 由 8 提到 16：1 Mbps 满载会溢出） |
+   | `CAN_RX_DISPATCH_PER_TICK` | 16 | CAN 接收任务每 1 ms 每路最多分发的帧数（原写死 8，低于 1 Mbps 满载帧率） |
    | `CAN_RX_NODE_MAX` / `_TX_NODE_MAX` | 50 / 50 | 收 / 发节点总数上限（≤ 255） |
    | `CAN_CMD_EXPIRE_MS` | 100 | 指令有效期：槽位这么久没 `FillData()` 就清零（必须大于心跳） |
    | `CAN_TX_HEARTBEAT_MS` | 5 | 保底心跳：发送节点至少这么久整帧发一次 |
@@ -198,7 +199,7 @@ stm32_bsp/                    仓库根 = 库
 ├─ algorithm/                 pid
 ├─ templates/                 接入用：hardware_config.h、board_cfg.*、app_main.*、FreeRTOSConfig.h / freertos.c USER CODE 片段、链接脚本片段
 ├─ tools/                     integrate.py：按 templates/ 自动接入宿主工程（1.2）
-├─ docs/                      编码规范、器件手册
+├─ docs/                      编码规范、器件手册、bsp_test/（UART / RS485 / CAN 实机测试记录，3.6）
 └─ examples/
    └─ dm_mc02/                DM-MC02 板的 CubeMX 工程（git mv 进来，保留历史）
       ├─ DM_MC02.ioc、Core/、Drivers/、Middlewares/、startup、STM32H723xG_flash.ld、cmake/、CMakePresets.json
@@ -241,7 +242,12 @@ stm32_bsp/                    仓库根 = 库
 - 只支持 STM32H7（FDCAN、DMA Stream、RAM_D1）。
 - 假定 **D-Cache 关闭**；开启时 `.dma_buffer` 要配成 MPU 非缓存区。
 - 需要 FreeRTOS + CMSIS-RTOS v2；C++11；tick 1 kHz。
-- `BspUart` 卡死恢复时，若 TX DMA 开着 DMA FIFO，可能丢 FIFO 里预读的字节（约 8~16 字节/次）。
+- `BspUart` 在 `init()` 里打开 UART 硬件 FIFO（2 Mbps 以上连续接收必需）。卡死恢复中止发送时，DMA FIFO 预读的字节与 UART TX FIFO 里的字节会丢（只在卡死恢复路径上）。
+- `BspUart` 的接收流缓冲区是模板参数的 2 倍（堆上），`Config::baudrate` 只用来估算卡死阈值，填错不再导致误判。
+- CAN：经典帧、8 字节数据帧；远程帧由硬件过滤器拒收，DLC > 8 的帧丢弃计数。TX 支持 CubeMX 的 FIFO 与 Queue 两种模式；
+  总线被更高优先级的流量占满时，本节点排在硬件 TX 里的低优先级帧（例如发送节点的周期帧）会一直发不出去并占住 TX 缓冲，
+  后来的高优先级帧也进不去（实测见 `docs/bsp_test/can1_can2.md` C06c/C06d）。
+- HAL V1.11.6 `HAL_DMA_Abort()` 读-改-写竞争（3.6）：HAL 时基优先级须高于串口中断；即使这样，-O2 构建下偶有 5 ms 中断内等待与少量丢数，根治（接收改 DMA 循环模式）待做。
 - 运行期可恢复的失败返回 `Status`，初始化失败一律 `configASSERT` 停机并写 `fault_record`（见 `docs/编码规范.md` 第 8 节）。
 
 ### 3.5 分阶段实施
@@ -252,7 +258,40 @@ stm32_bsp/                    仓库根 = 库
 | B | 目录搬迁：CubeMX 工程 `git mv` 到 `examples/dm_mc02`，`User/` 拆成库目录，板级代码进示例，烧录脚本改用 CMake 工程名 | ✅ 2026-10-17，编译 / 烧录 / 挂接检查，CubeMX 重新生成检查 |
 | C | 去板级耦合（3.2）：实例登记表、库任务与 `system_init()` / `system_start()` 入口、只依赖 HAL 头并按模块条件编译 | ✅ 2026-10-17，每步编译 / 烧录 / 挂接检查，回环回归测试，库编译矩阵 |
 | D | 配置化（3.3）：`hardware_config.h` + 默认值与范围检查、接入检查（链接脚本段、串口实例内存位置）、`templates/` | ✅ 2026-10-17，每步编译 / 烧录 / 挂接检查，默认 / 覆盖配置上板对比，模板替换示例 app 上板 |
-| E | 验证：示例工程实机回归；再用一个全新 CubeMX 工程按第 1 节从零接入，证明可移植 | 待做 |
+| E | 验证：示例工程实机回归；再用一个全新 CubeMX 工程按第 1 节从零接入，证明可移植 | 部分完成（2026-10-17）：全新 CubeMX 工程 `MC02_with_submodule` 按第 1 节接入，UART / RS485 / CAN 实机测试并修复库问题（3.6）；示例工程只用改后的库编译通过，**未上板回归** |
+
+### 3.6 实机测试（2026-10-17）
+
+在宿主工程 `MC02_with_submodule`（DM-MC02，全新 CubeMX 工程按第 1 节接入）上对 UART（U7 ⇄ U10）、RS485（U2 ⇄ U3，硬件 DE）、CAN（CAN1 ⇄ CAN2，无终端电阻）
+做了常规、边界、满载、故障注入、浸泡与物理插拔测试，Debug（-O0）与 -O2 各跑。完整记录（用例 / 目的 / 方案 / 现象 / 结论、原始数据、改动清单）在 **`docs/bsp_test/`**（宿主工程同名目录的副本）。
+
+结果：
+
+- UART：921600 双向满负荷无损（约 90 KB/s）；连续流 921600~4 Mbps 无损；帧错误 / 溢出 / DMA 停流 / 发送卡死注入后自恢复；拔插接收线自恢复。
+- RS485：收发器发送时不回波；请求-应答往返 4.5 ms（115200）；总线冲突、拔插 A 线后自恢复；4 Mbps 连续流无损。
+- CAN：1 Mbps 无终端电阻双向无错；双向满载无丢帧；20 轮真实 Bus-Off 全部自恢复（最长 102 ms）；对端离线只到 error-passive；拔插 CAN_H 自恢复；-O2 浸泡 5 min 双向各 30 万帧无丢失。
+
+据此修复的库问题（提交 `d32a996`，详见 `docs/bsp_test/changes.md` 第 3 节）：
+
+| 模块 | 问题 | 修复 |
+| --- | --- | --- |
+| `BspUart` | 运行中再 `init()` 返回 IO_ERROR、实例失效 | 先停收发、强制停 DMA 流并复位句柄，再重建 |
+| `BspUart` | 绑到没配 DMA 的串口时 `init()` 返回 OK、永远收不到 | 返回 BAD_ARG |
+| `BspUart` | UART 硬件 FIFO 关着，2 Mbps 以上连续接收几乎全丢（ORE） | `init()` 打开 FIFO（`UART_ENABLE_FIFO`，默认 1） |
+| `BspUart` | 接收流缓冲区与 DMA 缓冲一样大，写满投递后紧接的帧尾被丢（921600 下确定性丢帧） | 接收流缓冲区 2 倍 |
+| `BspUart` | HAL 在 IDLE 时先读计数再停 DMA，中间到达的字节不计入，静默丢 1 字节 | 停流后按剩余计数重算长度 |
+| `BspUart` | 卡死判定依赖 `Config::baudrate`，填错时误判中止，开 FIFO 后还丢数据 | 改为看 DMA 计数是否在动、UART 是否仍在移位 |
+| `BspUart` | `uart_irqn()` 缺 USART2 / USART6 | 补上 |
+| `BspCan` | DLC < 8 的帧 DLC 之后带出栈上旧数据 | 按 DLC 拷贝 |
+| `BspCan` | 远程帧进入应用（HAL 的 `FDCAN_FILTER_REMOTE` 含义是接收） | 硬件拒收 |
+| `BspCan` | 回退缓冲满丢帧无计数；接收队列与每 tick 分发（写死 8）低于 1 Mbps 满载帧率 | 新增 `rx_return_dropped`；默认 16，新增 `CAN_RX_DISPATCH_PER_TICK` |
+| `BspCan` | TX 配成 Queue 模式时一帧都发不出（TFFL 在队列模式恒为 0） | 改用 TFQF 判断 |
+
+仍未解决：
+
+- HAL V1.11.6 `HAL_DMA_Abort()` 先清 EN、紧接着读-改-写 CR 时可能把 EN 写回，流重新使能后 HAL 死等；在串口 IDLE 中断里且 HAL 时基优先级低于串口时整机卡死（-O2 必现）。
+  宿主工程已把时基优先级改为 4 缓解（见 1.1），-O2 浸泡 16 min 不再卡死，但命中时仍有 5 ms 等待与少量丢数（0.04%）。根治：接收改 DMA 循环模式（待做）。
+- 总线被更高优先级流量占满时，本节点的周期帧占满 TX 缓冲，高优先级帧也进不去（设计层面，未改）。
 
 ---
 

@@ -336,7 +336,7 @@ Status BspUart<BUFFER_SIZE>::init()
   // 创建接收流缓冲区：容量是 DMA 缓冲区的 2 倍。
   // DMA 缓冲写满（TC）时一次投递 BUFFER_SIZE 字节；流缓冲区若也只有 BUFFER_SIZE，就被一次填满，
   // 接收任务还没来得及读，紧接着的 IDLE 投递（帧尾 1~2 字节）就被丢掉 —— 2026-10-17 实测 921600 下
-  // 随机长度帧每 1000 帧丢 2~10 个字节（记在 rx_drop_bytes），详见宿主工程 docs/bsp_test/uart_u7_u10.md。
+  // 随机长度帧每 1000 帧丢 2~10 个字节（记在 rx_drop_bytes），详见 docs/bsp_test/uart_u7_u10.md（诊断 1）。
   _rx_stream_buffer = xStreamBufferCreate(RX_STREAM_SIZE, 1);
   if (_rx_stream_buffer == nullptr)
   {
