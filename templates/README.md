@@ -6,7 +6,7 @@
 
 | 文件 | 放到哪里 | 作用 |
 | --- | --- | --- |
-| `linker_sections.ld` | 宿主链接脚本 `SECTIONS { }` 里、`.data` 之前 | `.dma_buffer`（串口实例，DMA 可达的 RAM_D1）与 `.noinit`（`fault_record`，复位保留）。缺了 CMake 配置阶段报错 |
+| `linker_sections.ld` | 宿主链接脚本 `SECTIONS { }` 里、`.data` 之前 | `.dma_buffer`（串口实例，DMA 可达的 AXI SRAM：0x24000000 起，H723 叫 RAM_D1、H743 / H750 叫 RAM，脚本按地址识别）与 `.noinit`（`fault_record`，复位保留）。缺了 CMake 配置阶段报错 |
 | `FreeRTOSConfig_user_code.h` | `Core/Inc/FreeRTOSConfig.h` 的 USER CODE 1 段 | `configASSERT` → `fault_on_assert()` 记录现场 |
 | `freertos_user_code.c` | `Core/Src/freertos.c` 的 Includes / 4 / 5 / Init 段 | 栈溢出与分配失败钩子记录现场；`MX_FREERTOS_Init()` 调 `app_init()` |
 | `hardware_config.h` | `Core/Inc/`（stm32cubemx 的包含目录） | 可选：覆盖库的默认配置（任务优先级 / 栈深、队列深度、节点上限、指令有效期、巡检周期等） |

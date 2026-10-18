@@ -68,7 +68,7 @@ target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)  # BspUart::
 
 ### 1.3 修改的配置（模板与片段都在 `templates/`，索引见 `templates/README.md`）
 
-1. **链接脚本**加 `.dma_buffer` 与 `.noinit` 两段（`templates/linker_sections.ld`，放在 `SECTIONS` 里 `.data` 之前）：H7 的 DMA1 / DMA2 访问不到 DTCM，而 CubeMX 默认 `.bss` 在 DTCM，所以串口实例要放进 RAM_D1；`fault_record` 要跨复位保留。
+1. **链接脚本**加 `.dma_buffer` 与 `.noinit` 两段（`templates/linker_sections.ld`，放在 `SECTIONS` 里 `.data` 之前）：H7 的 DMA1 / DMA2 访问不到 DTCM，而 CubeMX 默认 `.bss` 在 DTCM，所以串口实例要放进 AXI SRAM（0x24000000 起；H723 的链接脚本叫 RAM_D1，H743 / H750 叫 RAM，`integrate.py` 按地址识别）；`fault_record` 要跨复位保留。
    - CubeMX 新建工程的链接脚本没有这两段。库的 CMake 在配置阶段检查 `CMAKE_EXE_LINKER_FLAGS` 里 `-T` 指定的链接脚本，缺了直接报错；链接脚本登记为配置依赖，改了下次构建自动重查。
    - CubeMX 6.18.1 重新生成时**保留**已有链接脚本的内容（2026-10-17 在示例上实测：两段与手改的 `MEMORY` 都在，只改了几行行尾）；其他版本未验证，靠上面的检查兜底。
    - 串口实例忘了放进 `.dma_buffer`（落在 DTCM / ITCM）时 `BspUart::init()` 返回 `BAD_ARG`，`configASSERT` 停机并记下行号——不检查的话系统照常运行、串口静默收不到数据（实测）。

@@ -59,18 +59,36 @@ bool dma_reachable(const void *addr)
  */
 bool uart_irqn(const USART_TypeDef *instance, IRQn_Type *irqn)
 {
+#if defined(USART1)
   if (instance == USART1)  { *irqn = USART1_IRQn;  return true; }
+#endif
+#if defined(USART2)
   if (instance == USART2)  { *irqn = USART2_IRQn;  return true; }
+#endif
+#if defined(USART3)
   if (instance == USART3)  { *irqn = USART3_IRQn;  return true; }
+#endif
 #if defined(USART6)
   if (instance == USART6)  { *irqn = USART6_IRQn;  return true; }
 #endif
+#if defined(UART4)
   if (instance == UART4)   { *irqn = UART4_IRQn;   return true; }
+#endif
+#if defined(UART5)
   if (instance == UART5)   { *irqn = UART5_IRQn;   return true; }
+#endif
+#if defined(UART7)
   if (instance == UART7)   { *irqn = UART7_IRQn;   return true; }
+#endif
+#if defined(UART8)
   if (instance == UART8)   { *irqn = UART8_IRQn;   return true; }
+#endif
+#if defined(UART9)
   if (instance == UART9)   { *irqn = UART9_IRQn;   return true; }
+#endif
+#if defined(USART10)
   if (instance == USART10) { *irqn = USART10_IRQn; return true; }
+#endif
   return false;
 }
 

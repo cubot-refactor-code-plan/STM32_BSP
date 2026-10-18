@@ -231,6 +231,9 @@ def check_prerequisites(host, rep):
 
 # ==================== 2. 链接脚本 ====================
 
+AXI_SRAM_ORIGIN = 0x24000000                                     # 所有 STM32H7 的 AXI SRAM（D1 域）起始地址
+DMA_UNREACHABLE = ((0x00000000, 0x00040000), (0x20000000, 0x20020000))  # ITCM（最大 256K）/ DTCM：DMA1 / DMA2 访问不到
+
 
 def find_linker_script(host, rep, explicit):
     if explicit:
@@ -264,14 +267,23 @@ def plan_linker(host, plan, rep, explicit, region):
         rep.skip(step, f"{rel} 已有 .dma_buffer / .noinit")
         return
 
-    regions = re.findall(r"^\s*([A-Za-z_]\w*)\s*\([rwxaRWXA!]+\)\s*:\s*ORIGIN", tf.text, re.M)
+    regions = {
+        m.group(1): int(m.group(2), 0)
+        for m in re.finditer(r"^\s*([A-Za-z_]\w*)\s*\([rwxaRWXA!]+\)\s*:\s*ORIGIN\s*=\s*(0[xX][0-9A-Fa-f]+|\d+)", tf.text, re.M)
+    }
+    names = ", ".join(f"{n}@0x{o:08X}" for n, o in regions.items())
     if region is None:
-        region = next((r for r in ("RAM_D1", "AXI_SRAM") if r in regions), None)
+        # 按地址认 AXI SRAM，不按名字：各型号 CubeMX 链接脚本的叫法不同（H723 RAM_D1，H743 / H750 RAM）
+        region = next((n for n, o in regions.items() if o == AXI_SRAM_ORIGIN), None)
+        region = region or next((r for r in ("RAM_D1", "AXI_SRAM") if r in regions), None)
         if region is None:
-            rep.error(step, f"MEMORY 里没有 RAM_D1 / AXI_SRAM（有 {', '.join(regions)}），用 --ram-region 指定 DMA 可达的区")
+            rep.error(step, f"MEMORY 里没有起始于 0x{AXI_SRAM_ORIGIN:08X} 的 AXI SRAM（有 {names}），用 --ram-region 指定 DMA 可达的区")
             return
     elif region not in regions:
-        rep.error(step, f"MEMORY 里没有 {region}")
+        rep.error(step, f"MEMORY 里没有 {region}（有 {names}）")
+        return
+    if any(lo <= regions[region] < hi for lo, hi in DMA_UNREACHABLE):
+        rep.error(step, f"{region}@0x{regions[region]:08X} 是 ITCM / DTCM，DMA1 / DMA2 访问不到，换一个区（有 {names}）")
         return
 
     template = re.sub(r"^\s*/\*.*?\*/\s*\n", "", read_template("linker_sections.ld"), count=1, flags=re.S)
@@ -304,7 +316,7 @@ def plan_linker(host, plan, rep, explicit, region):
     lines[j + 1 : j + 1] = insert
     tf.text = "\n".join(lines)
     plan.edit(tf)
-    rep.ok(step, f"{rel} 加入 {' / '.join('.' + s for s in missing)}（>{region}）")
+    rep.ok(step, f"{rel} 加入 {' / '.join('.' + s for s in missing)}（>{region}，0x{regions[region]:08X}）")
 
 
 # ==================== 3. FreeRTOSConfig.h ====================
@@ -554,7 +566,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="只检查并打印将要做的修改，不写文件")
     ap.add_argument("--app-dir", default="app", help="应用代码目录，相对宿主根（默认 app）")
     ap.add_argument("--linker-script", help="链接脚本，相对宿主根（默认从 cmake/*.cmake 的 -T 参数找）")
-    ap.add_argument("--ram-region", help="放 .dma_buffer / .noinit 的内存区（默认 RAM_D1 或 AXI_SRAM）")
+    ap.add_argument("--ram-region", help="放 .dma_buffer / .noinit 的内存区（默认按地址找 0x24000000 起的 AXI SRAM，不论叫 RAM_D1 还是 RAM）")
     ap.add_argument("--preset", default="Debug", help="clangd 使用哪个 CMake 预设的编译数据库（默认 Debug）")
     ap.add_argument("--no-hardware-config", action="store_true", help="不复制 hardware_config.h")
     ap.add_argument("--no-vscode", action="store_true", help="不改 .vscode/settings.json")

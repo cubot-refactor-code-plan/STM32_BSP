@@ -13,7 +13,9 @@
  * - .noinit：fault_record（断言 / 栈溢出 / 分配失败现场）。NOLOAD 且不在 .bss 范围内，启动代码
  *   不清零，复位后仍保留上一次的内容（掉电丢失）。
  *
- * 内存区名以宿主链接脚本 MEMORY { } 里的为准（H723 是 RAM_D1，有的型号叫 RAM / AXI_SRAM）。
+ * 内存区名以宿主链接脚本 MEMORY { } 里的为准：AXI SRAM 在所有 H7 上都从 0x24000000 开始，但 CubeMX 的叫法
+ * 因型号而异（H723 是 RAM_D1，H743 / H750 是 RAM）。下面的 >RAM_D1 只是占位：tools/integrate.py 按
+ * ORIGIN = 0x24000000 找到这个区并替换区名（--ram-region 可手动指定，但拒绝 ITCM / DTCM）；手动接入时自己改。
  */
 
   .dma_buffer (NOLOAD) :
