@@ -1,4 +1,6 @@
 # STM32_BSP：可作为 git submodule 接入的 STM32H7 板级库
+![GitHub Release](https://img.shields.io/github/v/release/cubot-refactor-code-plan/STM32_BSP)  
+![](https://img.shields.io/badge/chip-STM32H7xx-blue.svg) ![](https://img.shields.io/badge/RTOS-FreeRTOS_CMSIS_V2-green.svg) ![](https://img.shields.io/badge/language-C/C++-blue.svg) ![](https://img.shields.io/badge/ToolChain-CMake_v3.22.1-blue.svg) 
 
 > 分支 `mini-bsp`。目标：从 DM-MC02 整车工程里提炼出一个库，**任何 STM32H7 CubeMX 工程**都能把它作为 git submodule 接入。
 >
