@@ -30,14 +30,14 @@
 ### 1.2 接入 submodule
 
 ```bash
-git submodule add <本仓库地址> third_party/stm32_bsp
+git submodule add git@github.com:cubot-refactor-code-plan/STM32_BSP.git Middlewares/Third_Party/STM32_BSP # SSH格式
 ```
 
-**自动接入**：`tools/integrate.py` 按本节与 1.3 完成宿主工程的适配——检查 1.1 的 CubeMX 前提，改链接脚本、`FreeRTOSConfig.h` / `freertos.c` 的 USER CODE 段、根 `CMakeLists.txt`，复制 `templates/` 的 `board_cfg.*`、`app_main.*`、`hardware_config.h`，并配置 clangd（见本节末条）。所有片段从 `templates/` 读取；每步先判断是否已完成，可重复运行（例如 CubeMX 重新生成后）；只改内容仍是 CubeMX 默认的 USER CODE 段，已有自定义内容就报错并指出要手动合并的位置；有任何错误就不写任何文件；保持各文件原行尾。
+**自动接入**：`tools/integrate.py` 按本节与 1.3 完成宿主工程的适配——检查 1.1 的 CubeMX 前提，改链接脚本、`FreeRTOSConfig.h` / `freertos.c` 的 USER CODE 段、根 `CMakeLists.txt`，复制 `templates/` 的 `board_cfg.*`、`app_main.*`、`hardware_config.h`，在宿主根目录建 `user/`（复制 `templates/user/`：业务任务初始化 `user_init()` 与示例业务，`app_init()` 第 3 步只调它），并配置 clangd（见本节末条）。所有片段从 `templates/` 读取；每步先判断是否已完成，可重复运行（例如 CubeMX 重新生成后）；只改内容仍是 CubeMX 默认的 USER CODE 段，已有自定义内容就报错并指出要手动合并的位置；有任何错误就不写任何文件；保持各文件原行尾。
 
 ```bash
 python3 third_party/stm32_bsp/tools/integrate.py --dry-run   # 在宿主工程根目录：只检查并打印 diff
-python3 third_party/stm32_bsp/tools/integrate.py             # 执行；--help 看 --app-dir / --linker-script / --ram-region 等选项
+python3 third_party/stm32_bsp/tools/integrate.py             # 执行；--help 看 --app-dir / --user-dir / --linker-script / --ram-region 等选项
 ```
 
 复制来的 `board_cfg.*` 是 DM-MC02 的句柄与参数：脚本对照本工程 CubeMX 生成的代码，提示不存在的句柄、波特率与 PSC / ARR 不一致，但定时器时钟与具体用哪些外设仍需手动改。2026-10-17 实测：在接入前的全新 CubeMX 工程上运行，结果与按下文手动接入一致（只有链接脚本与 `freertos.c` 里的注释措辞不同），编译 0 warning；再次运行全部跳过。
@@ -50,6 +50,11 @@ target_link_libraries(${CMAKE_PROJECT_NAME} stm32_bsp)
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE app/board_cfg.cpp app/app_main.cpp)   # 从 templates/ 复制来的
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE app)
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)  # BspUart::printf 打印浮点需要（nano.specs）
+
+# 业务代码：user/ 下的 .c / .cpp 自动收集（templates/user/ 复制来的），新增业务文件不用改 CMake
+file(GLOB_RECURSE USER_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/user/*.c ${CMAKE_CURRENT_SOURCE_DIR}/user/*.cpp)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE ${USER_SOURCES})
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE user)
 ```
 
 - 库按 C++11 编译，并链接 `stm32cubemx` 取 HAL / FreeRTOS 的头文件与宏，所以宿主工程不需要再配 include 路径；CubeMX 生成的 `project()` 默认已启用 C++，应用的 `.cpp` 直接加进可执行目标即可（已实测）。
@@ -117,10 +122,12 @@ target_link_options(${CMAKE_PROJECT_NAME} PRIVATE -u _printf_float)  # BspUart::
    {
      system_init();   // 库入口：建系统事件组，创建库任务 sys / can_rx / can_tx（没开 FDCAN 时只建 sys）
      board_init();   // 外设实例 init()、设备 init()、注册 CAN 节点
-     /* 创建业务任务（入口先调 SysFlagWaitRunning()） */
+     user_init();    // 业务任务：user/user_main.cpp 里每个业务一行 configASSERT(xTaskCreate(...) == pdPASS)
      system_start();  // 置运行位放行所有任务；初始化阶段有失败记录就在这里断言停机
    }
    ```
+
+   业务代码放宿主根目录的 `user/`（`templates/user/`）：`user_main.*` 定义 `user_init()`，加业务就是新建 `user/xxx.hpp/.cpp`（任务入口第一句 `SysFlagWaitRunning()`）、在 `user_init()` 里加一行创建断言；`demo_task.*` 是两个不依赖外设的示例业务（心跳计数、堆余量监视），写自己的业务后删掉。
 
    库任务都是 1 kHz：`sys_task`（CAN Bus-Off 恢复、串口收发补救巡检、Online 离线计时），`can_rx_task`（按 ID 分发到接收节点），`can_tx_task`（槽位聚合发送、保底心跳、指令有效期；没有发送节点时自行退出）。
 
@@ -199,7 +206,7 @@ stm32_bsp/                    仓库根 = 库
 ├─ service/                   system（库入口）与库任务 sys_task / can_rx_task / can_tx_task、hardware_config_defaults、status、fault_record、can_rx_node / can_tx_node、online_check、motor_definition
 ├─ device/                    dji_motor、device_buzzer、dm_imu（占位）
 ├─ algorithm/                 pid
-├─ templates/                 接入用：hardware_config.h、board_cfg.*、app_main.*、FreeRTOSConfig.h / freertos.c USER CODE 片段、链接脚本片段
+├─ templates/                 接入用：hardware_config.h、board_cfg.*、app_main.*、user/（业务任务初始化与示例业务）、FreeRTOSConfig.h / freertos.c USER CODE 片段、链接脚本片段
 ├─ tools/                     integrate.py：按 templates/ 自动接入宿主工程（1.2）
 ├─ docs/                      编码规范、器件手册、bsp_test/（UART / RS485 / CAN 实机测试记录，3.6）
 └─ examples/

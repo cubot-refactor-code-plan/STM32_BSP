@@ -11,7 +11,7 @@
  *
  *            system_init();    // 1. 建系统事件组 + 创建库任务（调度器启动前不会运行）
  *            board_init();     // 2. 用户：各外设实例 init()、设备 init()、注册 CAN 节点等
- *            xTaskCreate(...); // 3. 用户：创建业务任务（入口先调 SysFlagWaitRunning()）
+ *            user_init();      // 3. 用户：创建业务任务（templates/user/：每个业务一行 xTaskCreate 断言，入口先调 SysFlagWaitRunning()）
  *            system_start();   // 4. 置运行位：前面有初始化失败记录就在这里停机（fault_record 记下行号）
  *
  *          库任务（都按 1 kHz 节拍，见各自实现；CAN 两个任务只在宿主工程开了 FDCAN 时创建）：
