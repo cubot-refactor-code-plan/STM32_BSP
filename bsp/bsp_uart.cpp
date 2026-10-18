@@ -285,7 +285,7 @@ BspUartBase *BspUartBase::find(const UART_HandleTypeDef *huart)
 
 /** @brief 只做赋值，RTOS 资源与接收启动放在 init() */
 template <size_t BUFFER_SIZE>
-BspUart<BUFFER_SIZE>::BspUart(const Config &cfg) : BspUartBase(cfg.huart), _transmit_enable(cfg.transmit_enable), _baudrate(cfg.baudrate)
+BspUart<BUFFER_SIZE>::BspUart(const Config &cfg) : BspUartBase(cfg.huart), _transmit_enable(cfg.transmit_enable), _baudrate(cfg.baudrate), _de_port(cfg.de_port), _de_pin(cfg.de_pin)
 {
   // 构造函数只做赋值；运行时逻辑（FreeRTOS资源创建）推迟到 init()
 }
@@ -323,6 +323,12 @@ Status BspUart<BUFFER_SIZE>::init()
     return Status::BAD_ARG;
   }
 
+  // 软件 DE 给了端口却没给引脚：拉高 / 拉低都写不到任何引脚，收发器永远不会发送
+  if (_de_port != nullptr && _de_pin == 0U)
+  {
+    return Status::BAD_ARG;
+  }
+
   // 已初始化过（运行中再次 init()）：先停掉本实例的收发再释放资源。
   // 不停的话 RX 仍是 BUSY_RX，后面重新启动接收必然失败，而旧资源已经释放 —— 实测 init() 返回 IO_ERROR、实例从此失效。
   if (_rx_stream_buffer != nullptr || _tx_stream_buffer != nullptr)
@@ -350,6 +356,7 @@ Status BspUart<BUFFER_SIZE>::init()
   }
   cleanup_resources();
   _tx_idle_pending_seen = false;
+  de_release(); // 发送已停（或从未开始）：释放总线，回到接收
 
   // 创建接收流缓冲区：容量是 DMA 缓冲区的 2 倍。
   // DMA 缓冲写满（TC）时一次投递 BUFFER_SIZE 字节；流缓冲区若也只有 BUFFER_SIZE，就被一次填满，
@@ -447,6 +454,7 @@ BspUart<BUFFER_SIZE>::~BspUart()
 
   _rx_should_run = false;
   HAL_UART_DMAStop(_huart); // 同时中止 RX 与 TX 的 DMA
+  de_release();
 
   cleanup_resources();
 }
@@ -1043,6 +1051,9 @@ bool BspUart<BUFFER_SIZE>::start_transmission(TickType_t wait)
  * @note 启动失败时数据留在 _tx_dma_buffer（_tx_chunk_active = false），由下一次启动或
  *       tx_recover() 先把它发掉，再取新数据——不往流缓冲区写回，所以字节顺序不会乱，
  *       中断侧也就不会成为流缓冲区的第二个写者。
+ * @note 软件 DE 全部在这里管：调用前提是通道空闲（TX 完成中断里最后一个停止位已移出，或任务侧已中止 / 本来就空闲），
+ *       所以启动 DMA 前拉高，凡是没启动发送的出口都拉低 —— DE 为高 ⇔ 有一段 DMA 发送在进行。
+ *       连续多段发送时 TX 完成中断里紧接着启动下一段，DE 一直保持高，中间不释放总线。
  */
 template <size_t BUFFER_SIZE>
 bool BspUart<BUFFER_SIZE>::start_chunk(bool from_isr, BaseType_t *pxHigherPriorityTaskWoken)
@@ -1062,7 +1073,8 @@ bool BspUart<BUFFER_SIZE>::start_chunk(bool from_isr, BaseType_t *pxHigherPriori
                        : xStreamBufferReceive(_tx_stream_buffer, _tx_dma_buffer, BUFFER_SIZE, 0);
     if (n == 0U)
     {
-      return false; // 没有待发数据
+      de_release(); // 没有待发数据：释放总线（TX 完成中断里这就是一次发送的结束）
+      return false;
     }
     _tx_chunk_off = 0;
     _tx_chunk_len = n;
@@ -1070,9 +1082,11 @@ bool BspUart<BUFFER_SIZE>::start_chunk(bool from_isr, BaseType_t *pxHigherPriori
 
   const TickType_t now = from_isr ? xTaskGetTickCountFromISR() : xTaskGetTickCount();
 
+  de_assert(); // 先占总线再启动 DMA：DMA 写 TDR 后起始位立刻开始
   if (HAL_UART_Transmit_DMA(_huart, _tx_dma_buffer + _tx_chunk_off, static_cast<uint16_t>(_tx_chunk_len)) != HAL_OK)
   {
     // 启动失败：数据留在 DMA 缓冲里等下次重发；也记一次“推进”，免得被当成卡死而中止
+    de_release();
     _tx_chunk_active       = false;
     _tx_last_activity_tick = now;
     _tx_start_fail_cnt++;

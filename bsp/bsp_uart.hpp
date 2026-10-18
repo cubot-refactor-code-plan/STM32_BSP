@@ -22,6 +22,8 @@
  *
  *   // 2) 全局实例写在用户的板级配置里（示例：examples/dm_mc02/app/board/bsp_cfg.cpp）：句柄 + 是否启用发送 + 波特率
  *   __attribute__((section(".dma_buffer"))) BspUart<128> bsp_uart1({&huart1, true, 115200});
+ *   //    RS485 收发器的 DE 没接到 UART 硬件 DE 引脚时，再传 DE 所在的 GPIO（软件 DE，见 Config::de_port）
+ *   __attribute__((section(".dma_buffer"))) BspUart<128> bsp_rs485({&huart6, true, 115200, DRE_GPIO_Port, DRE_Pin});
  *   // 3) init() 在初始化阶段调用（system_init() 之后、system_start() 之前，调度器启动前即可）；
  *   //    init() 时登记进 BspUartBase 登记表，HAL 回调与库的串口巡检靠它找到实例
  *   configASSERT(bsp_uart1.init() == Status::OK);
@@ -148,17 +150,28 @@ class BspUart : public BspUartBase
 public:
   // ---------------- 公有接口 ----------------
 
-  /** @brief 串口配置（可匿名按序传入：{huart, transmit_enable, baudrate}） */
+  /**
+   * @brief 串口配置（可匿名按序传入：{huart, transmit_enable, baudrate[, de_port, de_pin]}）
+   *
+   * @note 软件 DE（de_port 非空时启用）：给 DE 没接到 UART 硬件 DE 引脚的 RS485 收发器用。
+   *       每次启动 TX DMA 前拉高，TX Complete 中断（TC：最后一个停止位已移出）里没有下一批数据时拉低；
+   *       其余时候保持低电平（接收）。引脚在 CubeMX 里配成 GPIO 推挽输出、默认低电平。
+   *       能用硬件 DE（CubeMX 里 UART 选 RS485 模式）就用硬件：软件 DE 释放比停止位晚一个中断响应时间
+   *       （µs 级），对端须在收到请求后至少隔这么久再应答；拉高到第一个起始位之间也没有收发器建立时间余量，
+   *       高波特率（约 1 Mbps 以上）时要先实测。
+   */
   struct Config
   {
     /** @brief 按序构造（参数顺序 = 字段顺序） */
-    Config(UART_HandleTypeDef *huart = nullptr, bool transmit_enable = true, uint32_t baudrate = 115200U) : huart(huart), transmit_enable(transmit_enable), baudrate(baudrate)
+    Config(UART_HandleTypeDef *huart = nullptr, bool transmit_enable = true, uint32_t baudrate = 115200U, GPIO_TypeDef *de_port = nullptr, uint16_t de_pin = 0U) : huart(huart), transmit_enable(transmit_enable), baudrate(baudrate), de_port(de_port), de_pin(de_pin)
     {
     }
 
     UART_HandleTypeDef *huart;           ///< UART 句柄
     bool                transmit_enable; ///< 是否启用发送
     uint32_t            baudrate;        ///< 波特率 (bit/s)，TX 卡死判定要用它算一包发完要多久
+    GPIO_TypeDef       *de_port;         ///< 软件 DE 引脚端口；nullptr = 不用软件 DE
+    uint16_t            de_pin;          ///< 软件 DE 引脚（GPIO_PIN_x），de_port 非空时不能为 0
   };
 
   /**
@@ -343,9 +356,11 @@ private:
   SemaphoreHandle_t    _tx_lock          = nullptr; ///< 发送启动锁：保证「判忙 → 取包 → 启动 DMA」互斥
   SemaphoreHandle_t    _printf_lock      = nullptr; ///< printf 锁：保护实例共用的格式化缓冲区
 
-  bool     _rx_should_run = true;       ///< 是否希望 RX 在收；某次失败不会把它永久置成 false
-  bool     _transmit_enable;            ///< 是否启用发送
-  uint32_t _baudrate;                   ///< 波特率 (bit/s)，TX 卡死判定要用它算阈值
+  bool          _rx_should_run = true; ///< 是否希望 RX 在收；某次失败不会把它永久置成 false
+  bool          _transmit_enable;      ///< 是否启用发送
+  uint32_t      _baudrate;             ///< 波特率 (bit/s)，TX 卡死判定要用它算阈值
+  GPIO_TypeDef *_de_port;              ///< 软件 DE 引脚端口；nullptr = 不用软件 DE
+  uint16_t      _de_pin;               ///< 软件 DE 引脚
   uint8_t  _rx_dma_buffer[BUFFER_SIZE]; ///< DMA 接收缓冲区
   uint8_t  _tx_dma_buffer[BUFFER_SIZE]; ///< DMA 发送缓冲区
   char     _printf_buffer[BUFFER_SIZE]; ///< printf 格式化用的缓冲区
@@ -409,6 +424,24 @@ private:
 
   /** @brief 结算已停止的那一段：按 DMA 剩余计数把起点后移、长度减去已发出的字节（DMA 必须已停） */
   void settle_chunk();
+
+  /** @brief 软件 DE 拉高（开始驱动总线）；没配 DE 时什么也不做。BSRR 写入，ISR 中可调用 */
+  void de_assert()
+  {
+    if (_de_port != nullptr)
+    {
+      HAL_GPIO_WritePin(_de_port, _de_pin, GPIO_PIN_SET);
+    }
+  }
+
+  /** @brief 软件 DE 拉低（释放总线、回到接收）；没配 DE 时什么也不做。BSRR 写入，ISR 中可调用 */
+  void de_release()
+  {
+    if (_de_port != nullptr)
+    {
+      HAL_GPIO_WritePin(_de_port, _de_pin, GPIO_PIN_RESET);
+    }
+  }
 
   // ----------------
 };

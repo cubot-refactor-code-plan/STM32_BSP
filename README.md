@@ -22,7 +22,7 @@
 | FreeRTOS 钩子 | `configCHECK_FOR_STACK_OVERFLOW = 2`、`configUSE_MALLOC_FAILED_HOOK = 1` | 钩子里调库的 `fault_on_stack_overflow()` / `fault_on_malloc_failed()` 记录现场 |
 | HAL 时基 | 不用 SysTick（选一个空闲定时器），**该定时器中断优先级要高于串口 / CAN 中断**（数值小于 5，如 4；CubeMX 默认 15） | SysTick 给 FreeRTOS；HAL 在串口中断里调用的 `HAL_DMA_Abort()` 靠 `HAL_GetTick()` 超时，时基优先级低时一旦命中 HAL 的读-改-写竞争就整机卡死（见 3.6） |
 | FDCAN | 经典 CAN、RX FIFO0；开中断 0 / 1 | `BspCan` 用 FIFO0 收、TX FIFO 发、TX-FIFO-EMPTY 中断续发 |
-| UART | 需要的串口开 **RX DMA + TX DMA + 全局中断**（只收的串口可不配 TX DMA） | `BspUart` 用 IDLE + DMA 收、DMA 发 |
+| UART | 需要的串口开 **RX DMA + TX DMA + 全局中断**（只收的串口可不配 TX DMA）；RS485 优先用 UART 硬件 DE（RS485 模式），DE 没接到硬件 DE 引脚时把它配成 GPIO 输出、默认低电平，传给 `BspUart` 做软件 DE | `BspUart` 用 IDLE + DMA 收、DMA 发；软件 DE 见 `bsp_uart.hpp` 的 `Config::de_port` |
 | TIM PWM | 需要的通道配成 PWM，记下定时器时钟、PSC、ARR | `BspPwm` 的参数全部由用户配置传入 |
 | 不用的外设 | 不开即可 | 库按 `HAL_FDCAN_MODULE_ENABLED` / `HAL_UART_MODULE_ENABLED` / `HAL_TIM_MODULE_ENABLED` 条件编译：没开 FDCAN 就没有 CAN 驱动、节点、`DjiMotor` 与 CAN 任务，没开 UART / TIM 同理 |
 | GPIO | 按键、片选等按需配置并起 Label | `BspGpio` / `BspKey` 只封装电平读写 |
@@ -246,6 +246,7 @@ stm32_bsp/                    仓库根 = 库
 - 需要 FreeRTOS + CMSIS-RTOS v2；C++11；tick 1 kHz。
 - `BspUart` 在 `init()` 里打开 UART 硬件 FIFO（2 Mbps 以上连续接收必需）。卡死恢复中止发送时，DMA FIFO 预读的字节与 UART TX FIFO 里的字节会丢（只在卡死恢复路径上）。
 - `BspUart` 的接收流缓冲区是模板参数的 2 倍（堆上），`Config::baudrate` 只用来估算卡死阈值，填错不再导致误判。
+- `BspUart` 软件 DE（`Config::de_port`）：启动 TX DMA 前拉高、TX 完成中断（TC）里没有下一段时拉低。释放比停止位晚一个中断响应时间（µs 级），对端应答不能比这更快；拉高到起始位之间没有收发器建立时间余量，约 1 Mbps 以上需实测。卡死恢复中止发送时最后一个字节可能被截断。
 - CAN：经典帧、8 字节数据帧；远程帧由硬件过滤器拒收，DLC > 8 的帧丢弃计数。TX 支持 CubeMX 的 FIFO 与 Queue 两种模式；
   总线被更高优先级的流量占满时，本节点排在硬件 TX 里的低优先级帧（例如发送节点的周期帧）会一直发不出去并占住 TX 缓冲，
   后来的高优先级帧也进不去（实测见 `docs/bsp_test/can1_can2.md` C06c/C06d）。
