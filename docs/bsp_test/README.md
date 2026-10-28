@@ -1,6 +1,6 @@
 # stm32_bsp 接口实机测试（2026-10-17）
 
-> 本目录是宿主工程 `MC02_with_submodule` 的 `docs/bsp_test/` 的副本（2026-10-17）。文中的路径都以**宿主工程根目录**为准：
+> 本目录是宿主工程 `MC02_with_submodule` 的 `docs/bsp_test/` 的副本（2026-10-17，2026-10-28 补 SPI / BMI088）。文中的路径都以**宿主工程根目录**为准：
 > `app/`、`Core/`、`CMakeLists.txt` 指宿主工程，`third_party/stm32_bsp/` 即本库。测试代码在宿主工程 `app/test/`，不在本库里。
 
 对 submodule `third_party/stm32_bsp` 的 UART、RS485、CAN 接口在 DM-MC02 上做实机测试：常规用法、参数边界、满载、故障注入、长时间浸泡、物理插拔。
@@ -11,6 +11,7 @@
 | `uart_u7_u10.md` | UART U7 ⇄ U10：用例、方案、现象、结论，3 个专项诊断 |
 | `rs485_u2_u3.md` | RS485 U2 ⇄ U3 |
 | `can1_can2.md` | CAN1 ⇄ CAN2 |
+| `spi_bmi088.md` | SPI2 + 板载 BMI088（2026-10-28）：基本功能、错误路径、故障注入、总线争用与浸泡 |
 | `changes.md` | 所有代码与配置改动（CubeMX、测试代码、库修复 L1~L13）及原因 |
 | `flash_debug_eval.md` | EmberProbe 与 OpenOCD / GDB / CubeMX 命令行的对比与今后分工 |
 | `raw/` | 各轮原始结果表 |
@@ -26,6 +27,8 @@
 ## 怎么跑
 
 1. 开关在 `app/app_test.hpp`：`APP_BSP_TEST_ENABLED 1`，按需打开 `BSP_TEST_SUITE_*`、`BSP_TEST_SOAK_MINUTES`、`BSP_TEST_PHYSICAL`、`BSP_TEST_DIAG_LOG`。
+   SPI / BMI088 组（`BSP_TEST_SUITE_SPI_IMU`）不需要跳线，但 P01 / P02 / P05 要求板子静止；`BSP_TEST_SPI_STRESS_ONLY 1` 只跑人工晃动对比 P06（见 `spi_bmi088.md`）。
+   **任何测试都不得打开 BMI088 加热电阻（PB1 / TIM3_CH4）**。
 2. 编译、烧写，上电自动运行；结果在 `bsp_test_results[]`（`name / state / code / v[10] / err[4]`），汇总 `bsp_test_count / pass / fail / finished`。
    state：0 未运行 / 1 运行中 / 2 通过 / 3 失败 / 4 跳过 / 5 等待人工；`err[]` = 用例期间串口 NE / FE / ORE / 其他错误事件。
 3. 物理插拔模式按 `bsp_test_prompt` 的提示操作（断开 / 接回由固件自己检测，各等 120 s）。
@@ -69,3 +72,12 @@ CAN 6 项（DLC 尾部旧数据、远程帧进入应用、回退丢帧无计数�
 | 卡死恢复中止发送时丢 DMA FIFO 与 UART TX FIFO 里的字节（U12b） | 已知限制，已写入文档 | 只影响故障恢复路径 |
 
 **测试未覆盖**：CAN 终端电阻存在时的对比；FDCAN3、其他串口；D-Cache 开启；-O2 下的物理插拔。
+
+## SPI2 + 板载 BMI088（2026-10-27 ~ 10-28）
+
+记录见 `spi_bmi088.md`，改动见 `changes.md` 第 6、7 节。要点：
+
+- Debug 自动用例 20 / 20 通过；-O2 基本用例与 30 min 总线争用浸泡通过；4 个优先级不同的任务同时访问同一总线 0 错误、0 数据不一致。
+- -O2 轮出现过的“不合理帧”经碰板对照确认是板子被碰造成的；剧烈晃动下 SPI 0 错误、不漏帧。
+- 库修复 / 改动：L-SPI1（零拷贝与弹跳缓冲按方向判断）、L-BMI1（默认 ±24 g，±6 g 在剧烈晃动下饱和；饱和标志 / 计数）、L-SPI2（低优先级使用者自行传更长的 `timeout_ms`）。
+- 全程未打开加热电阻（固件内约 68 万次核对 + 外部 OpenOCD 核对）。

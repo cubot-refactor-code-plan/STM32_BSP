@@ -24,7 +24,8 @@
 | FDCAN | 经典 CAN、RX FIFO0；开中断 0 / 1 | `BspCan` 用 FIFO0 收、TX FIFO 发、TX-FIFO-EMPTY 中断续发 |
 | UART | 需要的串口开 **RX DMA + TX DMA + 全局中断**（只收的串口可不配 TX DMA）；RS485 优先用 UART 硬件 DE（RS485 模式），DE 没接到硬件 DE 引脚时把它配成 GPIO 输出、默认低电平，传给 `BspUart` 做软件 DE | `BspUart` 用 IDLE + DMA 收、DMA 发；软件 DE 见 `bsp_uart.hpp` 的 `Config::de_port` |
 | TIM PWM | 需要的通道配成 PWM，记下定时器时钟、PSC、ARR | `BspPwm` 的参数全部由用户配置传入 |
-| 不用的外设 | 不开即可 | 库按 `HAL_FDCAN_MODULE_ENABLED` / `HAL_UART_MODULE_ENABLED` / `HAL_TIM_MODULE_ENABLED` 条件编译：没开 FDCAN 就没有 CAN 驱动、节点、`DjiMotor` 与 CAN 任务，没开 UART / TIM 同理 |
+| SPI | 全双工主机、软件 NSS、8 bit；**`MasterKeepIOState = ENABLE`**；用 DMA 时开 RX DMA + TX DMA（Normal、Byte）+ SPI 全局中断（优先级 ≥ 5）；片选配成推挽输出、初始高电平并起 Label | `BspSpi` 在一次片选内分几段传输（地址、无效字节、数据），段间 SPE 关闭，KeepIOState 关着时 SCK 浮空会多出时钟沿；完成靠 SPI EOT 中断。只轮询（`use_dma = false`）时可以不配 DMA / 中断 |
+| 不用的外设 | 不开即可 | 库按 `HAL_FDCAN_MODULE_ENABLED` / `HAL_UART_MODULE_ENABLED` / `HAL_TIM_MODULE_ENABLED` / `HAL_SPI_MODULE_ENABLED` 条件编译：没开 FDCAN 就没有 CAN 驱动、节点、`DjiMotor` 与 CAN 任务，没开 UART / TIM / SPI 同理（没开 SPI 也就没有 `DeviceBmi088`） |
 | GPIO | 按键、片选等按需配置并起 Label | `BspGpio` / `BspKey` 只封装电平读写 |
 
 ### 1.2 接入 submodule
@@ -178,14 +179,15 @@ extern "C" void chassis_task(void *)
 | Bsp | `bsp_can` / `bsp_can_recovery` | FDCAN 收发（MessageBuffer）、DLC > 8 帧丢弃计数、Bus-Off 非阻塞恢复 | DLC 过滤：内部回环实测；Bus-Off 恢复：2026-09-30 实测 |
 | Bsp | `bsp_uart` | IDLE + DMA 收、多任务安全发（写锁 + printf 锁）、发送卡死续发、接收停摆重建 | 串口跳线实测（2026-10-16） |
 | Bsp | `bsp_pwm` | 通用 PWM：占空比 / 脉宽 / 频率，参数全由配置传入 | 蜂鸣器通道实测频率 |
+| Bsp | `bsp_spi` | SPI 主机：总线锁 + 片选设备，寄存器读写约定（读标志位、读时无效字节），短传输轮询、长传输 DMA，DTCM 缓冲经弹跳缓冲中转并分段 | BMI088 实测（2026-10-28，3.7） |
 | Bsp | `bsp_key` / `bsp_gpio` | 轮询消抖按键 / GPIO 电平 | 按键实测 |
 | Service | `status` | 统一状态码、系统事件标志、等待运行态 | 实测 |
 | Service | `fault_record` | 断言 / 栈溢出 / 分配失败现场记录，`.noinit` 跨复位保留 | 实测 |
 | Service | `can_rx_node` / `can_tx_node` | CAN 按 ID 分发接收、槽位聚合发送、100 ms 指令有效期 | 回环实测 |
-| Service | `online_check`、`motor_definition` | 在线计时、电机通用数据 | 编译通过 |
+| Service | `online_check`、`motor_definition`、`imu_definition` | 在线计时、电机通用数据、IMU 通用数据 | 编译通过（`imu_definition` 经 BMI088 实测） |
 | Device | `dji_motor` | M3508 / M2006 / GM6020，每电机一个对象 | C620 + M3508 实测（2026-09-01 / 10-01，当时版本；本轮改动后未接电机复测） |
 | Device | `device_buzzer` | 无源蜂鸣器（音调 / 音量 / 时长） | 实测 |
-| Device | `dm_imu` | 空文件占位，待按 CAN 节点层重写 | — |
+| Device | `device_bmi088` | BMI088 六轴 IMU（SPI）：上电配置与回读校验、读数换算到 `ImuData`、数据就绪中断计数与任务通知；不驱动加热电阻 | DM-MC02 板载 BMI088 实测（2026-10-28，3.7） |
 | Algorithm | `pid` | 位置式 PID | 未测 |
 | Service | `system` / `hardware_config_defaults` | 库入口 `system_init()` / `system_start()` 与库任务 `sys_task`、`can_rx_task`、`can_tx_task`（遍历 `BspCan` / `BspUartBase` 登记表）；可配置项默认值与 `hardware_config.h` 读取 | 内部回环 + 串口跳线回归，默认 / 覆盖配置对比（2026-10-17） |
 
@@ -202,13 +204,13 @@ extern "C" void chassis_task(void *)
 ```txt
 stm32_bsp/                    仓库根 = 库
 ├─ CMakeLists.txt             stm32_bsp（OBJECT 库）；链接 stm32cubemx（INTERFACE）取 HAL / FreeRTOS
-├─ bsp/                       bsp_can（含 bsp_can_recovery）、bsp_uart、bsp_pwm、bsp_key、bsp_gpio
-├─ service/                   system（库入口）与库任务 sys_task / can_rx_task / can_tx_task、hardware_config_defaults、status、fault_record、can_rx_node / can_tx_node、online_check、motor_definition
-├─ device/                    dji_motor、device_buzzer、dm_imu（占位）
+├─ bsp/                       bsp_can（含 bsp_can_recovery）、bsp_uart、bsp_spi、bsp_pwm、bsp_key、bsp_gpio
+├─ service/                   system（库入口）与库任务 sys_task / can_rx_task / can_tx_task、hardware_config_defaults、status、fault_record、can_rx_node / can_tx_node、online_check、motor_definition、imu_definition
+├─ device/                    dji_motor、device_buzzer、device_bmi088
 ├─ algorithm/                 pid
 ├─ templates/                 接入用：hardware_config.h、board_cfg.*、app_main.*、user/（业务任务初始化与示例业务）、FreeRTOSConfig.h / freertos.c USER CODE 片段、链接脚本片段
 ├─ tools/                     integrate.py：按 templates/ 自动接入宿主工程（1.2）
-├─ docs/                      编码规范、器件手册、bsp_test/（UART / RS485 / CAN 实机测试记录，3.6）
+├─ docs/                      编码规范、器件手册、bsp_test/（UART / RS485 / CAN 实机测试记录 3.6，SPI / BMI088 3.7）
 └─ examples/
    └─ dm_mc02/                DM-MC02 板的 CubeMX 工程（git mv 进来，保留历史）
       ├─ DM_MC02.ioc、Core/、Drivers/、Middlewares/、startup、STM32H723xG_flash.ld、cmake/、CMakePresets.json
@@ -257,6 +259,12 @@ stm32_bsp/                    仓库根 = 库
 - CAN：经典帧、8 字节数据帧；远程帧由硬件过滤器拒收，DLC > 8 的帧丢弃计数。TX 支持 CubeMX 的 FIFO 与 Queue 两种模式；
   总线被更高优先级的流量占满时，本节点排在硬件 TX 里的低优先级帧（例如发送节点的周期帧）会一直发不出去并占住 TX 缓冲，
   后来的高优先级帧也进不去（实测见 `docs/bsp_test/can1_can2.md` C06c/C06d）。
+- `BspSpi`：同一总线上的设备共用 CubeMX 的 CPOL / CPHA / 速率；一次片选内分段传输，CubeMX 里 `MasterKeepIOState` 必须为 ENABLE；
+  总线锁（互斥量）不按先来后到，和高优先级任务共用总线的低优先级任务应自己传更长的 `timeout_ms`（默认 `SPI_TRANSFER_TIMEOUT_MS` = 10 ms，实测争用下最低优先级者等过 9.3 ms 后超时）。
+  传输接口只能在任务里调用；用 DMA 的实例放进 `.dma_buffer`，DTCM 里的缓冲经弹跳缓冲中转（按 `SPI_DMA_BUFFER_SIZE` 分段）。
+- `DeviceBmi088`：默认加速度计 ±24 g（±6 g 在剧烈晃动下实测饱和）、陀螺仪 ±2000 °/s（芯片上限，剧烈晃动实测峰值 1934 °/s）；饱和帧由 `Bmi088RawData::saturated` 与
+  `acc_saturation_count()` / `gyro_saturation_count()` 给出。不驱动板上的加热电阻（DM-MC02 上是 PB1 / TIM3_CH4，误开容易损坏硬件），温控属于上层。
+  数据就绪中断由宿主的 `HAL_GPIO_EXTI_Callback` 转调（库不占用它）。
 - HAL V1.11.6 `HAL_DMA_Abort()` 读-改-写竞争（3.6）：HAL 时基优先级须高于串口中断；即使这样，-O2 构建下偶有 5 ms 中断内等待与少量丢数，根治（接收改 DMA 循环模式）待做。
 - 运行期可恢复的失败返回 `Status`，初始化失败一律 `configASSERT` 停机并写 `fault_record`（见 `docs/编码规范.md` 第 8 节）。
 
@@ -268,7 +276,7 @@ stm32_bsp/                    仓库根 = 库
 | B | 目录搬迁：CubeMX 工程 `git mv` 到 `examples/dm_mc02`，`User/` 拆成库目录，板级代码进示例，烧录脚本改用 CMake 工程名 | ✅ 2026-10-17，编译 / 烧录 / 挂接检查，CubeMX 重新生成检查 |
 | C | 去板级耦合（3.2）：实例登记表、库任务与 `system_init()` / `system_start()` 入口、只依赖 HAL 头并按模块条件编译 | ✅ 2026-10-17，每步编译 / 烧录 / 挂接检查，回环回归测试，库编译矩阵 |
 | D | 配置化（3.3）：`hardware_config.h` + 默认值与范围检查、接入检查（链接脚本段、串口实例内存位置）、`templates/` | ✅ 2026-10-17，每步编译 / 烧录 / 挂接检查，默认 / 覆盖配置上板对比，模板替换示例 app 上板 |
-| E | 验证：示例工程实机回归；再用一个全新 CubeMX 工程按第 1 节从零接入，证明可移植 | 部分完成（2026-10-17）：全新 CubeMX 工程 `MC02_with_submodule` 按第 1 节接入，UART / RS485 / CAN 实机测试并修复库问题（3.6）；示例工程只用改后的库编译通过，**未上板回归** |
+| E | 验证：示例工程实机回归；再用一个全新 CubeMX 工程按第 1 节从零接入，证明可移植 | 部分完成（2026-10-17、10-28）：全新 CubeMX 工程 `MC02_with_submodule` 按第 1 节接入，UART / RS485 / CAN 实机测试并修复库问题（3.6）；新增 SPI / BMI088 并实机测试（3.7）；示例工程只用改后的库编译通过，**未上板回归** |
 
 ### 3.6 实机测试（2026-10-17）
 
@@ -302,6 +310,28 @@ stm32_bsp/                    仓库根 = 库
 - HAL V1.11.6 `HAL_DMA_Abort()` 先清 EN、紧接着读-改-写 CR 时可能把 EN 写回，流重新使能后 HAL 死等；在串口 IDLE 中断里且 HAL 时基优先级低于串口时整机卡死（-O2 必现）。
   宿主工程已把时基优先级改为 4 缓解（见 1.1），-O2 浸泡 16 min 不再卡死，但命中时仍有 5 ms 等待与少量丢数（0.04%）。根治：接收改 DMA 循环模式（待做）。
 - 总线被更高优先级流量占满时，本节点的周期帧占满 TX 缓冲，高优先级帧也进不去（设计层面，未改）。
+
+### 3.7 SPI / BMI088 实机测试（2026-10-27 ~ 10-28）
+
+在宿主工程 `MC02_with_submodule` 上测试新增的 `bsp_spi`（`BspSpi` / `BspSpiDevice`）与 `device_bmi088`（输出 `imu_definition` 的 `ImuData`），板载 BMI088 挂在 SPI2 上
+（RX / TX DMA、SPI 中断、`MasterKeepIOState = ENABLE`）。完整记录在 **`docs/bsp_test/spi_bmi088.md`**，改动清单在 `docs/bsp_test/changes.md` 第 6、7 节。全程未打开加热电阻。
+
+结果：
+
+- Debug 自动用例 20 / 20：错误路径、芯片 ID、读时无效字节、配置回读、量程换算、数据就绪中断 / 任务通知、轮询与 DMA、零拷贝与弹跳缓冲分段、DMA 超时注入恢复（100 次）、反复 `init()`；
+  2 kHz 读取 10 min 120 万帧不漏帧；4 个优先级不同的任务同时访问两颗芯片 10 min 0 错误、0 数据不一致。
+- -O2：基本用例全部通过；4 任务争用浸泡 30 min（360 万帧）0 错误、0 不合理帧。
+- -O2 轮中出现过的加速度“不合理帧”经碰板对照确认是板子被碰造成的（不碰的 10 min 为 0，碰板 5 min 为 3869 帧）；剧烈晃动下 SPI 0 错误、不漏帧。
+
+据此的库改动：
+
+| 编号 | 问题 | 修复 |
+| --- | --- | --- |
+| L-SPI1 | `transfer_locked()` 只要 tx 或 rx 为空就两边都走弹跳缓冲，`read_reg()` 永远不能零拷贝 | 两个方向各自判断能否直接用；`bounce_cnt` 只计调用方缓冲 DMA 访问不到的段 |
+| L-BMI1 | ±6 g 在剧烈晃动下饱和（实测 25 帧被截断），±24 g 在 16.6 g 冲击下 0 饱和 | `DeviceBmi088::Config` 默认 ±24 g；新增饱和标志与计数 |
+| L-SPI2 | 低优先级任务在总线争用下可能等锁超过默认 10 ms | 默认值不变，文档写明由低优先级使用者传更长的 `timeout_ms`；`DeviceBmi088::update()` 增加 `timeout_ms` 参数（只编译验证） |
+
+未覆盖：±24 g 默认配置下的全量自动用例（只在量程用例与晃动对比里跑过）、D-Cache 开启、SPI 时钟高于 4.3 MHz、多路 SPI。
 
 ---
 

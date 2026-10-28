@@ -1,0 +1,38 @@
+# SPI/BMI088 -O2（RelWithDebInfo）第 3 轮，P01/P02 各 600 s + P05 30 min；固件 SHA-256 399d918c…b19b5444，2026-10-28
+# 16:42 UTC 暂停时读取：P05 进行中（约 17 min），A 任务（IMU）统计在 P05 结束时才写出，故未得到
+bsp_test_count           18 (0x12)
+bsp_test_pass            15 (0xf)
+bsp_test_fail            2 (0x2)
+bsp_test_finished        0 (0x0)
+spi_test_heater_boot     0 (0x0)
+spi_test_heater_now      0 (0x0)
+spi_test_heater_seen     0 (0x0)
+spi_test_heater_checks   224407 (0x36c97)
+spi_test_abort           0 (0x0)
+H00    pass   code=0    v=0 128 0 0 0 0 2 2 0 0
+S01    pass   code=0    v=5 5 5 5 5 0 5 393222 66049 0
+S02    pass   code=0    v=6 5 6 5 5 5 5 5 0 0
+I01    pass   code=0    v=30 15 0 0 0 0 0 0 0 0
+I02    pass   code=0    v=0 35 30 0 0 0 0 0 0 0
+I03    pass   code=0    v=172 1 10 4 0 4 1 0 0 0
+I04    pass   code=0    v=9720 2956 3665 0 -152 159 9718 75 0 0
+I05    pass   code=0    v=1609 2002 1000 0 0 0 0 0 0 0
+I06    pass   code=0    v=2003 2003 0 0 0 0 0 0 0 0
+I07    pass   code=0    v=9786 9714 9833 9832 17201 0 0 0 0 0
+S03    pass   code=0    v=0 0 1 1 0 2 1 16 0 0
+S04    pass   code=0    v=0 3 3 15 0 3 0 0 0 0
+S05    pass   code=0    v=0 2 0 0 1 1 1 0 0 0
+P03    pass   code=0    v=100 0 0 0 100 0 0 0 0 0
+P04    pass   code=0    v=0 0 93 93 0 0 0 0 0 0
+P01    FAIL   code=1    v=1201318 1201318 0 5 0 0 138 0 0 0
+P02    FAIL   code=1    v=1201338 1201338 0 201 0 0 224 0 39322200 0
+P05    RUN    code=0    v=0 0 0 0 0 0 0 0 0 0
+P02 B dma64  iter=1018782 mismatch=0 err=0 last=0 max_us=292
+P02 C id     iter=18053404 mismatch=0 err=0 last=0 max_us=378
+P02 D write  iter=1018782 mismatch=0 err=0 last=0 max_us=285
+TIM3_CR1  0x80
+TIM3_CCER 0x0
+TIM3_CCR4 0x0
+GPIOB_MODER 0xab5aeaaa
+GPIOB_IDR   0x2370
+GPIOB_AFRL  0x9905924

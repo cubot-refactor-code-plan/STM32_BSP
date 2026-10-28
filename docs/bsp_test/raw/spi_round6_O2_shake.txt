@@ -1,0 +1,179 @@
+# SPI/BMI088 -O2 第 6 轮：剧烈晃动对比 P06（±6 g → 第 180 秒切 ±24 g），固件 SHA-256 312b42ea…98b8e370，2026-10-28 13:52:37~13:59:37（北京时间）
+# 约定：0~59 静止 / 60~179 ±6 g 晃动 / 180~239 静止 / 240~359 ±24 g 晃动 / 360~419 静止；实际晃动：64~142、199~262 秒（第二段提前开始）
+spi_tl_seconds           420
+spi_tl_start_tick        293
+spi_test_tick_now        442640
+bsp_test_count           4
+bsp_test_finished        1
+spi_test_heater_seen     0
+spi_test_abort           0
+spi_test_heater_checks   44266
+spi_p06_acc_max6         9568
+spi_p06_acc_max24        16258
+当前 = 第 442.3 秒
+阶段 1（第 0~59 秒）：不合理帧 0，其中角速度 ≤0.2 rad/s 的秒里 0；角速度 >0.2 的秒数 0；|acc| 范围 9.06~10.32；加速度计饱和帧 0、陀螺仪饱和帧 0；|gyro| 最大 0.05 rad/s
+阶段 2（第 60~179 秒）：不合理帧 0，其中角速度 ≤0.2 rad/s 的秒里 0；角速度 >0.2 的秒数 79；|acc| 范围 0.66~95.68；加速度计饱和帧 25、陀螺仪饱和帧 0；|gyro| 最大 30.89 rad/s
+阶段 3（第 180~239 秒）：不合理帧 28047，其中角速度 ≤0.2 rad/s 的秒里 0；角速度 >0.2 的秒数 41；|acc| 范围 0.84~73.38；加速度计饱和帧 0、陀螺仪饱和帧 0；|gyro| 最大 23.14 rad/s
+阶段 4（第 240~359 秒）：不合理帧 0，其中角速度 ≤0.2 rad/s 的秒里 0；角速度 >0.2 的秒数 19；|acc| 范围 1.83~162.58；加速度计饱和帧 0、陀螺仪饱和帧 0；|gyro| 最大 33.76 rad/s
+阶段 5（第 360~419 秒）：不合理帧 0，其中角速度 ≤0.2 rad/s 的秒里 0；角速度 >0.2 的秒数 0；|acc| 范围 9.61~10.07；加速度计饱和帧 0、陀螺仪饱和帧 0；|gyro| 最大 0.06 rad/s
+有动静的秒（不合理帧>0 或 |gyro|>0.2 rad/s）：
+  s  64 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 7.261 rad/s acc=1.52~31.26
+  s  65 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 6.871 rad/s acc=3.53~36.38
+  s  66 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 5.533 rad/s acc=5.49~31.21
+  s  67 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 2.307 rad/s acc=7.00~18.21
+  s  68 anom=    0 sat_acc=   5 sat_gyro=   0 gyro_max=27.439 rad/s acc=6.09~59.57
+  s  69 anom=    0 sat_acc=   2 sat_gyro=   0 gyro_max=29.658 rad/s acc=1.65~60.68
+  s  70 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=18.419 rad/s acc=2.65~23.44
+  s  71 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=26.008 rad/s acc=3.07~27.05
+  s  72 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=15.285 rad/s acc=4.06~16.06
+  s  73 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=20.773 rad/s acc=5.22~33.97
+  s  74 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=20.773 rad/s acc=1.26~35.53
+  s  75 anom=    0 sat_acc=  12 sat_gyro=   0 gyro_max=16.371 rad/s acc=0.78~81.00
+  s  76 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=17.557 rad/s acc=4.01~61.23
+  s  77 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=16.698 rad/s acc=6.43~43.47
+  s  78 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=17.306 rad/s acc=6.29~44.62
+  s  79 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=15.947 rad/s acc=7.60~24.56
+  s  80 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 7.484 rad/s acc=1.25~17.99
+  s  81 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 5.325 rad/s acc=5.40~15.82
+  s  82 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=12.107 rad/s acc=2.60~37.51
+  s  83 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 6.379 rad/s acc=4.17~17.96
+  s  84 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 7.667 rad/s acc=2.47~38.55
+  s  85 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 4.326 rad/s acc=5.45~44.47
+  s  86 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 6.433 rad/s acc=3.53~34.05
+  s  87 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=22.189 rad/s acc=1.13~43.22
+  s  88 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=30.890 rad/s acc=1.34~56.69
+  s  89 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=25.895 rad/s acc=6.51~33.62
+  s  90 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=23.450 rad/s acc=4.08~28.96
+  s  91 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=28.127 rad/s acc=0.66~22.26
+  s  92 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=23.264 rad/s acc=5.98~19.95
+  s  93 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=25.633 rad/s acc=0.88~30.46
+  s  94 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 4.724 rad/s acc=5.29~12.72
+  s  95 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=15.288 rad/s acc=2.45~14.77
+  s  96 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=11.638 rad/s acc=6.22~14.99
+  s  97 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.488 rad/s acc=5.22~15.79
+  s  98 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 8.335 rad/s acc=5.76~16.78
+  s  99 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.371 rad/s acc=6.41~15.96
+  s 100 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.581 rad/s acc=8.51~19.56
+  s 101 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.195 rad/s acc=5.98~17.47
+  s 102 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 4.496 rad/s acc=6.95~25.13
+  s 103 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 4.607 rad/s acc=6.60~21.82
+  s 104 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 2.496 rad/s acc=6.95~16.33
+  s 105 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 2.646 rad/s acc=7.92~15.03
+  s 106 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 7.189 rad/s acc=6.85~25.27
+  s 107 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=13.407 rad/s acc=4.01~18.78
+  s 108 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.316 rad/s acc=5.82~16.51
+  s 109 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 7.927 rad/s acc=5.56~14.76
+  s 110 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.888 rad/s acc=2.71~16.18
+  s 111 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=13.277 rad/s acc=3.35~17.31
+  s 112 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.759 rad/s acc=3.74~15.15
+  s 113 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=11.976 rad/s acc=4.67~16.83
+  s 114 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 8.893 rad/s acc=5.73~13.99
+  s 115 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=15.175 rad/s acc=6.65~17.08
+  s 116 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=30.287 rad/s acc=3.57~49.49
+  s 117 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=22.538 rad/s acc=4.41~54.13
+  s 118 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=28.340 rad/s acc=1.17~35.42
+  s 119 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=17.109 rad/s acc=2.58~24.92
+  s 120 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=16.872 rad/s acc=3.61~25.71
+  s 121 anom=    0 sat_acc=   6 sat_gyro=   0 gyro_max=15.251 rad/s acc=2.56~95.68
+  s 122 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=15.784 rad/s acc=3.80~21.70
+  s 123 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.982 rad/s acc=3.60~30.14
+  s 124 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 9.056 rad/s acc=2.98~27.73
+  s 125 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 7.287 rad/s acc=2.71~27.13
+  s 126 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=15.362 rad/s acc=3.59~22.04
+  s 127 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=16.635 rad/s acc=4.69~28.36
+  s 128 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=13.990 rad/s acc=3.21~19.25
+  s 129 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=15.547 rad/s acc=3.47~20.31
+  s 130 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.461 rad/s acc=2.37~17.12
+  s 131 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 6.894 rad/s acc=4.73~19.38
+  s 132 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 4.237 rad/s acc=6.82~16.16
+  s 133 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=18.686 rad/s acc=1.06~43.55
+  s 134 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=19.065 rad/s acc=2.22~48.34
+  s 135 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=14.600 rad/s acc=2.94~35.56
+  s 136 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=12.777 rad/s acc=1.70~34.00
+  s 137 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=11.631 rad/s acc=1.13~26.71
+  s 138 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=11.143 rad/s acc=2.61~33.25
+  s 139 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=13.476 rad/s acc=2.30~38.75
+  s 140 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=14.675 rad/s acc=2.76~36.91
+  s 141 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 4.598 rad/s acc=4.40~26.84
+  s 142 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 1.423 rad/s acc=1.68~43.19
+  s 199 anom=   13 sat_acc=   0 sat_gyro=   0 gyro_max= 0.593 rad/s acc=3.07~17.74
+  s 200 anom=  771 sat_acc=   0 sat_gyro=   0 gyro_max=15.111 rad/s acc=4.11~23.48
+  s 201 anom= 1252 sat_acc=   0 sat_gyro=   0 gyro_max=16.852 rad/s acc=2.88~26.79
+  s 202 anom= 1016 sat_acc=   0 sat_gyro=   0 gyro_max=19.853 rad/s acc=3.40~27.77
+  s 203 anom=  938 sat_acc=   0 sat_gyro=   0 gyro_max=15.601 rad/s acc=4.38~22.67
+  s 204 anom=  517 sat_acc=   0 sat_gyro=   0 gyro_max=18.590 rad/s acc=5.74~17.33
+  s 205 anom=  791 sat_acc=   0 sat_gyro=   0 gyro_max=15.241 rad/s acc=3.94~25.49
+  s 206 anom=  183 sat_acc=   0 sat_gyro=   0 gyro_max= 7.020 rad/s acc=5.08~15.00
+  s 207 anom=  793 sat_acc=   0 sat_gyro=   0 gyro_max=12.659 rad/s acc=4.98~16.97
+  s 208 anom= 1251 sat_acc=   0 sat_gyro=   0 gyro_max=12.255 rad/s acc=5.86~18.42
+  s 209 anom=  460 sat_acc=   0 sat_gyro=   0 gyro_max=11.463 rad/s acc=5.17~19.65
+  s 210 anom=  706 sat_acc=   0 sat_gyro=   0 gyro_max=18.485 rad/s acc=2.26~19.39
+  s 211 anom=  498 sat_acc=   0 sat_gyro=   0 gyro_max=16.266 rad/s acc=1.44~17.70
+  s 212 anom=  145 sat_acc=   0 sat_gyro=   0 gyro_max= 8.975 rad/s acc=6.24~14.00
+  s 213 anom=  290 sat_acc=   0 sat_gyro=   0 gyro_max=20.944 rad/s acc=3.06~16.02
+  s 214 anom=  730 sat_acc=   0 sat_gyro=   0 gyro_max=20.246 rad/s acc=2.30~39.95
+  s 215 anom= 1015 sat_acc=   0 sat_gyro=   0 gyro_max=23.143 rad/s acc=4.23~25.22
+  s 216 anom= 1087 sat_acc=   0 sat_gyro=   0 gyro_max=19.633 rad/s acc=1.68~40.85
+  s 217 anom=  164 sat_acc=   0 sat_gyro=   0 gyro_max= 9.290 rad/s acc=7.27~21.10
+  s 218 anom=   99 sat_acc=   0 sat_gyro=   0 gyro_max=12.812 rad/s acc=8.58~13.58
+  s 219 anom=  464 sat_acc=   0 sat_gyro=   0 gyro_max=13.831 rad/s acc=3.55~14.37
+  s 220 anom=  502 sat_acc=   0 sat_gyro=   0 gyro_max=15.313 rad/s acc=0.84~18.11
+  s 221 anom=  854 sat_acc=   0 sat_gyro=   0 gyro_max=18.809 rad/s acc=1.12~25.13
+  s 222 anom=  575 sat_acc=   0 sat_gyro=   0 gyro_max=15.904 rad/s acc=3.15~24.85
+  s 223 anom=  940 sat_acc=   0 sat_gyro=   0 gyro_max=21.644 rad/s acc=4.90~27.34
+  s 224 anom= 1285 sat_acc=   0 sat_gyro=   0 gyro_max=20.226 rad/s acc=4.09~25.83
+  s 225 anom=  397 sat_acc=   0 sat_gyro=   0 gyro_max=17.030 rad/s acc=4.74~30.59
+  s 226 anom=  754 sat_acc=   0 sat_gyro=   0 gyro_max=16.125 rad/s acc=4.27~73.38
+  s 227 anom=  611 sat_acc=   0 sat_gyro=   0 gyro_max=17.712 rad/s acc=2.76~18.12
+  s 228 anom=  538 sat_acc=   0 sat_gyro=   0 gyro_max=12.746 rad/s acc=3.61~16.83
+  s 229 anom=  364 sat_acc=   0 sat_gyro=   0 gyro_max=13.770 rad/s acc=2.83~15.00
+  s 230 anom=  171 sat_acc=   0 sat_gyro=   0 gyro_max=11.840 rad/s acc=6.50~18.63
+  s 231 anom= 1015 sat_acc=   0 sat_gyro=   0 gyro_max=11.481 rad/s acc=3.74~19.53
+  s 232 anom= 1166 sat_acc=   0 sat_gyro=   0 gyro_max=10.231 rad/s acc=3.09~18.97
+  s 233 anom=  573 sat_acc=   0 sat_gyro=   0 gyro_max= 8.930 rad/s acc=5.38~15.59
+  s 234 anom=  895 sat_acc=   0 sat_gyro=   0 gyro_max=19.513 rad/s acc=4.51~19.31
+  s 235 anom=  819 sat_acc=   0 sat_gyro=   0 gyro_max=13.144 rad/s acc=4.05~20.80
+  s 236 anom=  658 sat_acc=   0 sat_gyro=   0 gyro_max=13.339 rad/s acc=4.53~21.38
+  s 237 anom=  615 sat_acc=   0 sat_gyro=   0 gyro_max=16.027 rad/s acc=2.35~19.33
+  s 238 anom=  647 sat_acc=   0 sat_gyro=   0 gyro_max=12.433 rad/s acc=3.96~19.83
+  s 239 anom= 1485 sat_acc=   0 sat_gyro=   0 gyro_max=11.485 rad/s acc=4.01~18.22
+  s 240 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=10.417 rad/s acc=3.91~17.30
+  s 241 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 5.278 rad/s acc=5.56~13.97
+  s 242 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 5.966 rad/s acc=2.30~162.58
+  s 247 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 7.658 rad/s acc=5.13~20.13
+  s 248 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=11.492 rad/s acc=4.00~17.85
+  s 249 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=11.261 rad/s acc=4.48~20.01
+  s 250 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=12.284 rad/s acc=4.34~19.18
+  s 251 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=15.751 rad/s acc=3.07~26.59
+  s 252 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=16.284 rad/s acc=3.52~26.05
+  s 253 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=13.483 rad/s acc=3.56~19.86
+  s 254 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=14.514 rad/s acc=6.25~23.10
+  s 255 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=18.764 rad/s acc=1.83~31.67
+  s 256 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=19.540 rad/s acc=2.30~30.90
+  s 257 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=14.544 rad/s acc=3.05~31.09
+  s 258 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=33.758 rad/s acc=4.64~42.90
+  s 259 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max=12.891 rad/s acc=4.08~19.62
+  s 260 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 9.085 rad/s acc=5.19~16.61
+  s 261 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 9.077 rad/s acc=5.99~15.02
+  s 262 anom=    0 sat_acc=   0 sat_gyro=   0 gyro_max= 9.802 rad/s acc=3.17~65.80
+
+bsp_test_count           4 (0x4)
+bsp_test_pass            3 (0x3)
+bsp_test_fail            1 (0x1)
+bsp_test_finished        1 (0x1)
+spi_test_heater_boot     0 (0x0)
+spi_test_heater_now      0 (0x0)
+spi_test_heater_seen     0 (0x0)
+spi_test_heater_checks   44282 (0xacfa)
+spi_test_abort           0 (0x0)
+H00    pass   code=0    v=0 128 0 0 0 0 2 2 0 0
+P06    FAIL   code=1    v=840802 840802 0 0 25 0 28047 0 16258 0
+H99    pass   code=0    v=0 128 0 0 0 0 2 2 0 0
+S-SPI  pass   code=0    v=17928 15256 0 419561472 841 11 0 0 0 0
+failures: 0
+TIM3_CR1  0x80
+TIM3_CCER 0x0
+TIM3_CCR4 0x0
+GPIOB_MODER 0xab5aeaaa
+GPIOB_IDR   0x2370
+GPIOB_AFRL  0x9905924

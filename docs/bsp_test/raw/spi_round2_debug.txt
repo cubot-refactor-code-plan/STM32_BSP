@@ -1,0 +1,40 @@
+# SPI/BMI088 Debug（-O0）正式轮，P01/P02 各 600 s；固件 SHA-256 071af382…960c5，2026-10-28
+bsp_test_count           21 (0x15)
+bsp_test_pass            20 (0x14)
+bsp_test_fail            0 (0x0)
+bsp_test_finished        1 (0x1)
+spi_test_heater_boot     0 (0x0)
+spi_test_heater_now      0 (0x0)
+spi_test_heater_seen     0 (0x0)
+spi_test_heater_checks   129058 (0x1f822)
+spi_test_abort           0 (0x0)
+H00    pass   code=0    v=0 128 0 0 0 0 2 2 0 0
+S01    pass   code=0    v=5 5 5 5 5 0 5 393222 66049 0
+S02    pass   code=0    v=6 5 6 5 5 5 5 5 0 0
+I01    pass   code=0    v=30 15 0 0 0 0 0 0 0 0
+I02    pass   code=0    v=0 35 30 0 0 0 0 0 0 0
+I03    pass   code=0    v=172 1 10 4 0 4 1 0 0 0
+I04    pass   code=0    v=9719 2811 3678 0 -155 161 9716 95 0 0
+I05    pass   code=0    v=1610 2002 1000 0 0 0 0 0 0 0
+I06    pass   code=0    v=2002 2002 0 0 0 0 0 0 0 0
+I07    pass   code=0    v=9790 9721 9837 9838 16895 0 0 0 0 0
+S03    pass   code=0    v=0 0 1 1 0 2 1 16 0 0
+S04    pass   code=0    v=0 3 3 15 0 3 0 0 0 0
+S05    pass   code=0    v=0 2 0 0 1 1 1 0 0 0
+P03    pass   code=0    v=100 0 0 0 100 0 0 0 0 0
+P04    pass   code=0    v=0 0 93 93 0 0 0 0 0 0
+P01    pass   code=0    v=1201368 1201368 0 0 0 0 193 0 0 0
+P02    pass   code=0    v=1201365 1201365 0 0 0 0 257 0 39322200 0
+P05    skip   code=0    v=0 0 0 0 0 0 0 0 0 0
+S99    pass   code=0    v=56349959 600116 300008 100 0 0 100 0 0 0
+H99    pass   code=0    v=0 128 0 0 0 0 2 2 0 0
+S-SPI  pass   code=0    v=17928 8264 0 1005586991 553 11 0 0 0 0
+P02 B dma64  iter=600000 mismatch=0 err=0 last=0 max_us=351
+P02 C id     iter=6692471 mismatch=0 err=0 last=0 max_us=580
+P02 D write  iter=600000 mismatch=0 err=0 last=0 max_us=339
+TIM3_CR1  0x80
+TIM3_CCER 0x0
+TIM3_CCR4 0x0
+GPIOB_MODER 0xab5aeaaa
+GPIOB_IDR   0x2370
+GPIOB_AFRL  0x9905924

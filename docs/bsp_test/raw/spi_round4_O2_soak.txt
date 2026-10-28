@@ -1,0 +1,39 @@
+# SPI/BMI088 -O2（RelWithDebInfo）第 4 轮：诊断固件，只跑 H00 / P05（30 min）/ S99 / H99；固件 SHA-256 4b2d87ec…7485df82，2026-10-28 04:43~05:14 UTC
+# 烧写后外部核对：
+TIM3_CR1  0x80
+TIM3_CCER 0x0
+TIM3_CCR4 0x0
+GPIOB_MODER 0xab5aeaaa
+GPIOB_IDR   0x2370
+GPIOB_AFRL  0x9905924
+# 结束时读取（含不合理帧 / 接口失败记录与外部核对）：
+bsp_test_count           5 (0x5)
+bsp_test_pass            5 (0x5)
+bsp_test_fail            0 (0x0)
+bsp_test_finished        1 (0x1)
+spi_test_heater_boot     0 (0x0)
+spi_test_heater_now      0 (0x0)
+spi_test_heater_seen     0 (0x0)
+spi_test_heater_checks   187906 (0x2de02)
+spi_test_abort           0 (0x0)
+H00    pass   code=0    v=0 128 0 0 0 0 2 2 0 0
+P05    pass   code=0    v=3604146 3604146 0 0 0 0 225 0 117966600 0
+S99    pass   code=0    v=195598732 1800000 900000 0 0 0 0 0 0 0
+H99    pass   code=0    v=0 128 0 0 0 0 2 2 0 0
+S-SPI  pass   code=0    v=17928 8264 0 419561472 927 11 0 0 0 0
+P02 B dma64  iter=1800000 mismatch=0 err=0 last=0 max_us=295
+P02 C id     iter=31189495 mismatch=0 err=0 last=0 max_us=381
+P02 D write  iter=1800000 mismatch=0 err=0 last=0 max_us=288
+anomalies: 0
+failures: 0
+TIM3_CR1  0x80
+TIM3_CCER 0x0
+TIM3_CCR4 0x0
+GPIOB_MODER 0xab5aeaaa
+GPIOB_IDR   0x2370
+GPIOB_AFRL  0x9905924
+
+# 附：第 3 轮固件在 2026-10-28 约 04:15 UTC 板子重启后自动重跑（04:40 UTC 只读读取，P05 未完）
+P01 FAIL v=1201528 1201528 0 167 0 0 138 0（167 帧不合理）
+P02 FAIL v=1201405 1201405 0 187 0 0 224 0（187 帧不合理）
+P05 进行中：B 308044 / C 5458632（err=1 last=2 TIMEOUT max_us=9342）/ D 308044

@@ -131,6 +131,26 @@
 #  define UART_PRINTF_TIMEOUT_MS 10
 #endif
 
+/* ==================== SPI ==================== */
+
+/** @brief BspSpi 登记表容量（STM32H723 有 SPI1~6） */
+#ifndef SPI_MAX_INSTANCES
+#  define SPI_MAX_INSTANCES 6
+#endif
+
+/**
+ * @brief 每个 BspSpi 实例的 DMA 弹跳缓冲（字节，收发各一份）
+ * @note 调用方缓冲在 DTCM（任务栈、默认 .bss）时经它中转；更长的传输按它分段，片选全程保持。
+ */
+#ifndef SPI_DMA_BUFFER_SIZE
+#  define SPI_DMA_BUFFER_SIZE 256
+#endif
+
+/** @brief BspSpi / BspSpiDevice 传输接口的默认超时 (ms)：等总线锁、以及每段等 DMA 完成 */
+#ifndef SPI_TRANSFER_TIMEOUT_MS
+#  define SPI_TRANSFER_TIMEOUT_MS 10
+#endif
+
 /* ==================== 取值检查 ==================== */
 
 #ifdef __cplusplus
@@ -146,6 +166,9 @@ static_assert(CAN_BUSOFF_RETRY_MS >= 1, "hardware_config.h: CAN_BUSOFF_RETRY_MS 
 static_assert(UART_MAX_INSTANCES >= 1 && UART_MAX_INSTANCES <= 255, "hardware_config.h: UART_MAX_INSTANCES 取 1~255");
 static_assert(UART_PATROL_PERIOD_MS >= 1, "hardware_config.h: UART_PATROL_PERIOD_MS 至少 1 ms");
 static_assert(UART_PRINTF_TIMEOUT_MS >= 1, "hardware_config.h: UART_PRINTF_TIMEOUT_MS 至少 1 ms");
+static_assert(SPI_MAX_INSTANCES >= 1 && SPI_MAX_INSTANCES <= 6, "hardware_config.h: SPI_MAX_INSTANCES 取 1~6（STM32H7 只有 SPI1~6）");
+static_assert(SPI_DMA_BUFFER_SIZE >= 16 && SPI_DMA_BUFFER_SIZE <= 65535, "hardware_config.h: SPI_DMA_BUFFER_SIZE 取 16~65535（单次 DMA 最多 65535 字节）");
+static_assert(SPI_TRANSFER_TIMEOUT_MS >= 1, "hardware_config.h: SPI_TRANSFER_TIMEOUT_MS 至少 1 ms");
 #endif
 
 #endif // __HARDWARE_CONFIG_DEFAULTS_HPP__

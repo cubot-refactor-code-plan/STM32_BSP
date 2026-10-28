@@ -38,4 +38,10 @@
 // #define UART_PATROL_PERIOD_MS      10                     /* 串口补救巡检周期：卡死的发送约 2 个周期内续发，停摆的接收 1 个周期内重建 */
 // #define UART_PRINTF_TIMEOUT_MS     10                     /* BspUart::printf() 取锁 / 入队的等待上限 */
 
+/* ==================== SPI ==================== */
+
+// #define SPI_MAX_INSTANCES          6                      /* BspSpi 实例上限（1~6） */
+// #define SPI_DMA_BUFFER_SIZE        256                    /* 每个 BspSpi 的 DMA 弹跳缓冲（字节，收发各一份）；调用方缓冲在 DTCM 时经它中转、按它分段 */
+// #define SPI_TRANSFER_TIMEOUT_MS    10                     /* 传输接口默认超时：等总线锁、每段等 DMA 完成 */
+
 #endif /* HARDWARE_CONFIG_H */

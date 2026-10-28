@@ -99,3 +99,41 @@ USER CODE 段、链接脚本、`FreeRTOSConfig.h`、`freertos.c` 未受影响；
 - `build/RelWithDebInfo` 是测试 -O2 时另配的构建目录（`-O2 -g`，Release 预设是 `-g0`，没有调试信息、EmberProbe 读不了结构体）。
 - 工程根目录留有 EmberProbe 生成失败时的诊断目录 `.emberprobe-cubemx-*` 与 `.emberprobe-cubemx-audit/`（未提交，skill 要求不要删诊断日志，由用户决定是否清理 / 忽略）。
 - 测试开关已恢复：`APP_BSP_TEST_ENABLED 0`，默认固件编译 0 warning。
+
+## 6. CubeMX：SPI2 接 BMI088（2026-10-28）
+
+- 改动：删掉 UART8 RX / TX 的 DMA（UART8 在 `app/board_cfg.cpp` 没有实例；DMA1 / DMA2 只剩 DMA1_Stream0 一个空闲流，全双工 DMA 需要两个）；
+  SPI2_RX → DMA1_Stream0（Normal、Byte、High），SPI2_TX → DMA1_Stream7（Normal、Byte、Low），两个流中断优先级 5；SPI2 全局中断，优先级 5；
+  SPI2 `MasterKeepIOState = ENABLE`（一次片选内多段传输之间 HAL 会关 SPE，不保持 IO 时 SCK 浮空，模式 3 的器件会看到多余时钟沿）。
+- 不改：TIM3 / PB1（BMI088 加热电阻，按要求不碰）。
+- 过程：直接编辑 `.ioc` 成候选，CubeMX 命令行（`STM32CubeMX -q`，`config load / project path / project generate / exit`）生成。
+  变化只有 `spi.c`（DMA、中断、KeepIOState）、`dma.c`、`stm32h7xx_it.c/.h`（DMA1_Stream0、SPI2 中断，删 DMA2_Stream0）、`usart.c`（删 UART8 DMA）；`tim.c` 未变，行尾未变，链接脚本这次没被改。
+
+## 7. SPI2 / BMI088：库实现与测试（2026-10-27 ~ 10-28，记录见 `spi_bmi088.md`）
+
+库（`third_party/stm32_bsp`）：
+
+| 编号 | 文件 | 内容 |
+| --- | --- | --- |
+| 新增 | `bsp/bsp_spi.cpp` | `BspSpi`：登记表、互斥锁、轮询 / DMA（阈值）、弹跳缓冲与分段、DMA 超时 `HAL_SPI_Abort`、`HAL_SPI_TxRxCpltCallback` / `HAL_SPI_ErrorCallback`；`BspSpiDevice`：一次片选事务、寄存器读写约定 |
+| 新增 | `device/device_bmi088.cpp` | 上电序列（假读切 SPI、软复位、ID、加速度计上电）、写后回读校验、`update()` → `ImuData` / 原始值 / 温度、数据就绪中断计数与任务通知 |
+| 头文件 | `bsp/bsp_spi.hpp` | 私有 `unregister_self()`、`BspSpiDevice::transaction()`；零拷贝 / 分段说明；KeepIOState 要求 |
+| 头文件 | `device/device_bmi088.hpp` | 私有 `write_verify()` 加比较掩码（GYRO_BANDWIDTH 读回 bit7 恒为 1） |
+| L-SPI1 | `bsp/bsp_spi.cpp` | 第 1 轮 S03 / S04：`transfer_locked()` 只要 tx 或 rx 为空就两边都走弹跳缓冲，`read_reg()`（数据段 tx 为空）永远不能零拷贝，`bounce_cnt` 也把填充算成了中转 → 两个方向各自判断能否直接用，`bounce_cnt` 只计调用方缓冲 DMA 访问不到的段 |
+| L-BMI1 | `device/device_bmi088.hpp/.cpp`、`templates/board_cfg.cpp` | 第 5 / 6 轮：±6 g 在碰撞 / 剧烈晃动下饱和（P06 ±6 g 段 25 帧），读数被截断 → `Config` 默认加速度计量程改 ±24 g；`Bmi088RawData::saturated` 位与 `acc_saturation_count()` / `gyro_saturation_count()`；板级 `imu_bmi088` 改 ±24 g |
+| L-SPI2 | `bsp/bsp_spi.hpp`、`device/device_bmi088.hpp/.cpp` | 低优先级任务争用总线时可能等锁超过默认 10 ms（P05 一次）；用户决定默认值不变 → 文档写明低优先级使用者自行传更长的 `timeout_ms`，`DeviceBmi088::update()` 增加可选 `timeout_ms` 参数（编译通过，未上板） |
+| 其他 | `service/imu_definition.hpp`（用户新建）、`device/dm_imu.*`（用户删除） | IMU 通用数据 `ImuData`；BMI088 按 `DjiMotor` 的写法把它存在对象里（`data()` / `raw_data()` / `temperature()`） |
+| 文档 | `README.md`、`templates/board_cfg.cpp`、`docs/bsp_test/` | 1.1 节加 SPI 要求；模块表 / 目录树加 `bsp_spi`、`device_bmi088`、`imu_definition`，删 `dm_imu`；新增 3.7 节（SPI / BMI088 实机测试）；模板加注释掉的 SPI / BMI088 示例；同步 `docs/bsp_test/` 副本 |
+
+另：示例工程 `examples/dm_mc02`（开着 SPI）用改后的库编译通过（0 warning），未上板。
+
+宿主工程：
+
+- `app/board_cfg.*`：`bsp_spi2`（`.dma_buffer`）、两个片选设备、`imu_bmi088`，`board_init()` 各一行断言；`HAL_GPIO_EXTI_Callback` 转调 BMI088 数据就绪（PE10 / PE12）。
+- `app/board_cfg.cpp`：`imu_bmi088` 加速度计量程第 6 轮起改为 ±24 g（L-BMI1）。
+- `app/test/test_spi_imu.cpp`（新增）：H / S / I / P01~P05 自动用例、P06 人工晃动对比；加热监视任务；诊断记录（每秒时间线、静止时孤立不合理帧、接口失败）。
+- `app/test/bsp_test.*`、根 `CMakeLists.txt`（加测试源文件）。
+- `app/app_test.hpp`：新增 `BSP_TEST_SUITE_SPI_IMU`、`BSP_TEST_SPI_STRESS_SECONDS`、`BSP_TEST_SPI_STRESS_ONLY`；测完已恢复 `APP_BSP_TEST_ENABLED 0`、`BSP_TEST_SOAK_MINUTES 0`，
+  UART / RS485 / CAN 组开关恢复为 1。正常固件 Debug / RelWithDebInfo 编译 0 warning。
+- 烧写：全部用 EmberProbe `mcu-flash`（Debug 与 RelWithDebInfo 两个 ELF 路径各一次 24 h 授权）；`build/RelWithDebInfo` 为 -O2 另配的构建目录。
+
