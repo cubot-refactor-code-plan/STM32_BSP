@@ -15,7 +15,7 @@
 | `user/` | 宿主根目录的 `user/`（`--user-dir`） | 业务代码：`user_main.*` 定义 `user_init()`，每个业务的任务在里面一行 `configASSERT(xTaskCreate(...) == pdPASS)`；`demo_task.*` 是两个不依赖外设的示例业务（心跳计数、堆余量监视）。脚本只在 `user/user_main.cpp` 不存在时整组复制，删掉的示例不会被加回来 |
 
 `board_cfg.*` 用的是 `hfdcan1` / `huart1` / `htim12`，换成你工程里实际开的外设；没开的外设连同 `#include` 一起删掉（库会按 HAL 模块开关跳过对应驱动）。
-SPI 总线、片选设备与板载 BMI088 的写法在 `board_cfg.cpp` 里以注释给出（开了 SPI 再取消注释并在 `board_cfg.hpp` 加对应 `#include`）；BMI088 的数据就绪中断要在宿主的 `HAL_GPIO_EXTI_Callback` 里转调。
+SPI 总线、片选设备与板载 BMI088 的写法在 `board_cfg.cpp` 里以注释给出（开了 SPI 再取消注释并在 `board_cfg.hpp` 加对应 `#include`）；BMI088 的数据就绪中断要在宿主的 `HAL_GPIO_EXTI_Callback` 里转调；数据由库的内部任务自动刷新，业务里用 `snapshot()` 读。
 
 应用源文件加进宿主 CMake（CubeMX 生成的 `project()` 默认已启用 C++）：
 

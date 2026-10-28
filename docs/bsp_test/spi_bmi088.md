@@ -20,7 +20,7 @@ BMI088 旁的加热电阻由 **PB1 = TIM3_CH4（PWM）** 驱动，在本板上�
 - SPI2：主机、模式 3（CPOL 高 / CPHA 2edge）、8 bit、软件 NSS、预分频 32 ≈ 4.3 MHz。
 - CubeMX 改动（`changes.md` 第 6 节）：SPI2_RX → DMA1_Stream0、SPI2_TX → DMA1_Stream7（挪用了没有使用的 UART8 的 DMA），SPI2 全局中断，`MasterKeepIOState = ENABLE`。
 - 板级配置：`bsp_spi2({&hspi2, true, 16U})`（≥ 16 字节走 DMA），加速度计 `{…, 0x80, 1}`、陀螺仪 `{…, 0x80, 0}`；
-  `imu_bmi088`：±2000 °/s、加速度计 1600 Hz、陀螺仪 2000 Hz / 230 Hz，数据就绪中断开；加速度计量程第 1~5 轮为 ±6 g，第 6 轮起改为 **±24 g**（见“剧烈晃动”一节）。
+  `imu_bmi088`：±2000 °/s、加速度计 1600 Hz、陀螺仪 2000 Hz / 230 Hz（以上各轮都是 2 kHz；之后库默认改为 1000 Hz / 116 Hz，见“正常固件读不到数据”一节），数据就绪中断开；加速度计量程第 1~5 轮为 ±6 g，第 6 轮起改为 **±24 g**（见“剧烈晃动”一节）。
 - 构建：Debug（-O0）与 RelWithDebInfo（-O2）各跑一轮；烧写用 EmberProbe `mcu-flash`，结果用 OpenOCD `read_memory` 读结果表（不停核）。
 
 ## 用例与结果
@@ -109,6 +109,17 @@ BMI088 旁的加热电阻由 **PB1 = TIM3_CH4（PWM）** 驱动，在本板上�
 - `bsp/bsp_spi.hpp` 文件说明里写明总线锁不按先来后到、低优先级使用者应传更长的 `timeout_ms`（如 50 ms 或 `portMAX_DELAY`）；`BspSpiDevice` 的接口本来都带 `timeout_ms`。
 - `DeviceBmi088::update(uint32_t timeout_ms = SPI_TRANSFER_TIMEOUT_MS)`：原来没有超时参数，现在把它传给三次寄存器读取。Debug / -O2 编译 0 warning。
 
+## 正常固件读不到数据：改为库自动刷新（L-BMI2）
+
+收尾后用户在正常固件（测试关着）里读 `imu_bmi088` 的 `_data` / `_raw_data` 全是 0。原因：`DeviceBmi088` 原来是拉取式，只有调用 `update()` 才读 SPI，
+测试代码之外没人调用。按用户要求参照 `DjiMotor`（数据由库任务刷新）改为默认自动刷新：`init()` 建内部任务 "imu"，每次陀螺仪数据就绪刷新一帧，
+业务用 `snapshot()` 读同一帧，`update_count()` / `update_fail_count()` 看刷新情况（细节见 `changes.md` L-BMI2）。
+
+验证（正常固件，-O0）：间隔 1 s 两次读，`update_count` +2013、陀螺仪中断 +2013、`update_fail_count` +0，acc = (-0.08, 0.05, 9.78) → (0.00, 0.12, 9.87) m/s²，
+加热寄存器全 0。测试代码已改为跟着自动刷新走，只编译验证，未重跑（用户决定不再回归）。
+
+之后按用户要求，陀螺仪默认输出数据率改为 **1000 Hz（`HZ1000_BW116`）**：自动刷新随之为 1 kHz，CPU 占用减半（约 7.5%~14%）。测试里的 I05 期望值、配置回读期望（GYRO_BANDWIDTH = 0x02）与临时对象的配置同步改为 1000 Hz（只编译验证）。
+
 ## 测试开关与诊断工具
 
 - 板上已烧回正常固件（Debug，`APP_BSP_TEST_ENABLED 0`，2026-10-28；烧后外部核对加热寄存器全 0，`app_alive_count` 正常递增）。
@@ -123,10 +134,11 @@ BMI088 旁的加热电阻由 **PB1 = TIM3_CH4（PWM）** 驱动，在本板上�
 - `BspSpi` / `BspSpiDevice`：寄存器读写约定（读标志位、读时无效字节）、轮询 / DMA 选择、零拷贝 / 弹跳缓冲与分段、总线锁、错误路径、DMA 超时恢复都按头文件约定工作；
   4 个不同优先级任务同时访问同一总线上的两颗芯片，Debug 20 min、-O2 30 min 浸泡 0 错误、0 数据不一致。
 - `DeviceBmi088`：上电序列、配置回读、量程换算、数据就绪中断与任务通知正确；2 kHz 读取没有漏帧；碰板与剧烈晃动下 SPI 通信 0 错误、不漏帧。
+  默认由库的内部任务自动刷新（L-BMI2），正常固件实测 2 kHz 刷新、0 失败；之后默认陀螺仪改为 1000 Hz。
 - -O2 第 3 轮 P01 / P02 的不合理帧经碰板对照（第 5 轮）确认是板子被碰造成的，不是驱动问题。
 - 剧烈晃动下 ±6 g 会饱和（读数被截断）→ 库默认改为 ±24 g，并提供饱和标志 / 计数；陀螺仪峰值 1934 °/s，接近芯片上限 ±2000 °/s。
 - 低优先级任务在总线争用下可能等锁超过默认 10 ms → 默认值不变，由低优先级使用者自行传更长的 `timeout_ms`（`DeviceBmi088::update()` 已加参数）。
-- 库改动：L-SPI1、L-BMI1、L-SPI2（见 `changes.md` 第 7 节）。
+- 库改动：L-SPI1、L-BMI1、L-SPI2、L-BMI2（见 `changes.md` 第 7 节）。
 - 未覆盖：±24 g 默认配置下的全量自动用例（用户决定不再回归；±24 g 只在 I07 与 P06 里跑过）；L-SPI2 只编译未上板；D-Cache 开启（库假定关闭）；
   SPI 时钟 > 4.3 MHz；`BspSpi` 挂多路 SPI；BMI088 加热 / 温控（按约束不测）；运动状态下读数的绝对精度（只检查了饱和与范围）；
   `HAL_SPI_Abort` 在中断上下文里的行为（库只在任务里调用它）。

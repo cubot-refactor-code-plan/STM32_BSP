@@ -187,7 +187,7 @@ extern "C" void chassis_task(void *)
 | Service | `online_check`、`motor_definition`、`imu_definition` | 在线计时、电机通用数据、IMU 通用数据 | 编译通过（`imu_definition` 经 BMI088 实测） |
 | Device | `dji_motor` | M3508 / M2006 / GM6020，每电机一个对象 | C620 + M3508 实测（2026-09-01 / 10-01，当时版本；本轮改动后未接电机复测） |
 | Device | `device_buzzer` | 无源蜂鸣器（音调 / 音量 / 时长） | 实测 |
-| Device | `device_bmi088` | BMI088 六轴 IMU（SPI）：上电配置与回读校验、读数换算到 `ImuData`、数据就绪中断计数与任务通知；不驱动加热电阻 | DM-MC02 板载 BMI088 实测（2026-10-28，3.7） |
+| Device | `device_bmi088` | BMI088 六轴 IMU（SPI）：上电配置与回读校验、读数换算到 `ImuData`；默认由内部任务按陀螺仪数据就绪自动刷新（默认 1 kHz），`snapshot()` 取同一帧；饱和标志 / 计数；不驱动加热电阻 | DM-MC02 板载 BMI088 实测（2026-10-28，3.7） |
 | Algorithm | `pid` | 位置式 PID | 未测 |
 | Service | `system` / `hardware_config_defaults` | 库入口 `system_init()` / `system_start()` 与库任务 `sys_task`、`can_rx_task`、`can_tx_task`（遍历 `BspCan` / `BspUartBase` 登记表）；可配置项默认值与 `hardware_config.h` 读取 | 内部回环 + 串口跳线回归，默认 / 覆盖配置对比（2026-10-17） |
 
@@ -264,7 +264,8 @@ stm32_bsp/                    仓库根 = 库
   传输接口只能在任务里调用；用 DMA 的实例放进 `.dma_buffer`，DTCM 里的缓冲经弹跳缓冲中转（按 `SPI_DMA_BUFFER_SIZE` 分段）。
 - `DeviceBmi088`：默认加速度计 ±24 g（±6 g 在剧烈晃动下实测饱和）、陀螺仪 ±2000 °/s（芯片上限，剧烈晃动实测峰值 1934 °/s）；饱和帧由 `Bmi088RawData::saturated` 与
   `acc_saturation_count()` / `gyro_saturation_count()` 给出。不驱动板上的加热电阻（DM-MC02 上是 PB1 / TIM3_CH4，误开容易损坏硬件），温控属于上层。
-  数据就绪中断由宿主的 `HAL_GPIO_EXTI_Callback` 转调（库不占用它）。
+  数据就绪中断由宿主的 `HAL_GPIO_EXTI_Callback` 转调（库不占用它）。默认 `Config::auto_update = true`：`init()` 建内部任务 "imu"（`BMI088_TASK_PRIORITY` / `BMI088_TASK_STACK`），
+  每次陀螺仪数据就绪刷新一帧（没有中断时每 10 ms）；默认陀螺仪 1000 Hz（`HZ1000_BW116`），约占 CPU 7.5%~14%，改 2000 Hz 翻倍；自动刷新的对象必须存活到系统停止，临时对象用 `auto_update = false`。
 - HAL V1.11.6 `HAL_DMA_Abort()` 读-改-写竞争（3.6）：HAL 时基优先级须高于串口中断；即使这样，-O2 构建下偶有 5 ms 中断内等待与少量丢数，根治（接收改 DMA 循环模式）待做。
 - 运行期可恢复的失败返回 `Status`，初始化失败一律 `configASSERT` 停机并写 `fault_record`（见 `docs/编码规范.md` 第 8 节）。
 
@@ -330,6 +331,7 @@ stm32_bsp/                    仓库根 = 库
 | L-SPI1 | `transfer_locked()` 只要 tx 或 rx 为空就两边都走弹跳缓冲，`read_reg()` 永远不能零拷贝 | 两个方向各自判断能否直接用；`bounce_cnt` 只计调用方缓冲 DMA 访问不到的段 |
 | L-BMI1 | ±6 g 在剧烈晃动下饱和（实测 25 帧被截断），±24 g 在 16.6 g 冲击下 0 饱和 | `DeviceBmi088::Config` 默认 ±24 g；新增饱和标志与计数 |
 | L-SPI2 | 低优先级任务在总线争用下可能等锁超过默认 10 ms | 默认值不变，文档写明由低优先级使用者传更长的 `timeout_ms`；`DeviceBmi088::update()` 增加 `timeout_ms` 参数（只编译验证） |
+| L-BMI2 | `DeviceBmi088` 是拉取式，正常固件里没人调 `update()`，数据一直是 0 | 默认由内部任务自动刷新（参照 `DjiMotor` 由库任务刷新），`snapshot()`、`update_count()` / `update_fail_count()`；实测 1 s 刷新 2013 次 = 中断数、0 失败 |
 
 未覆盖：±24 g 默认配置下的全量自动用例（只在量程用例与晃动对比里跑过）、D-Cache 开启、SPI 时钟高于 4.3 MHz、多路 SPI。
 

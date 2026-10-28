@@ -121,6 +121,7 @@ USER CODE 段、链接脚本、`FreeRTOSConfig.h`、`freertos.c` 未受影响；
 | 头文件 | `device/device_bmi088.hpp` | 私有 `write_verify()` 加比较掩码（GYRO_BANDWIDTH 读回 bit7 恒为 1） |
 | L-SPI1 | `bsp/bsp_spi.cpp` | 第 1 轮 S03 / S04：`transfer_locked()` 只要 tx 或 rx 为空就两边都走弹跳缓冲，`read_reg()`（数据段 tx 为空）永远不能零拷贝，`bounce_cnt` 也把填充算成了中转 → 两个方向各自判断能否直接用，`bounce_cnt` 只计调用方缓冲 DMA 访问不到的段 |
 | L-BMI1 | `device/device_bmi088.hpp/.cpp`、`templates/board_cfg.cpp` | 第 5 / 6 轮：±6 g 在碰撞 / 剧烈晃动下饱和（P06 ±6 g 段 25 帧），读数被截断 → `Config` 默认加速度计量程改 ±24 g；`Bmi088RawData::saturated` 位与 `acc_saturation_count()` / `gyro_saturation_count()`；板级 `imu_bmi088` 改 ±24 g |
+| L-BMI2 | `device/device_bmi088.hpp/.cpp`、`service/hardware_config_defaults.hpp`、`templates/hardware_config.h`、`templates/board_cfg.cpp`、README | 收尾后用户发现正常固件里 `imu_bmi088` 的 `_data` / `_raw_data` 全是 0：`DeviceBmi088` 是拉取式，测试关掉后没人调 `update()` → 参照 `DjiMotor`（库任务刷新）改为默认自动刷新：`Config::auto_update`（默认 true）时 `init()` 建内部任务 "imu"，陀螺仪数据就绪唤醒（无中断时 10 ms 兜底）后 `update()`，成功后给 `attach_task()` 的任务置 `UPDATED_BIT`；`update()` 在临界区里写回，新增 `snapshot()`、`update_count()` / `update_fail_count()` / `last_status()`；配置项 `BMI088_TASK_PRIORITY`（+6）/ `BMI088_TASK_STACK`（256）。正常固件实测 1 s 刷新 2013 次 = 陀螺仪中断数、0 失败、acc.z ≈ 9.8 m/s²。随后按用户要求 `Config` 默认陀螺仪 ODR 改为 1000 Hz（`HZ1000_BW116`），自动刷新 1 kHz |
 | L-SPI2 | `bsp/bsp_spi.hpp`、`device/device_bmi088.hpp/.cpp` | 低优先级任务争用总线时可能等锁超过默认 10 ms（P05 一次）；用户决定默认值不变 → 文档写明低优先级使用者自行传更长的 `timeout_ms`，`DeviceBmi088::update()` 增加可选 `timeout_ms` 参数（编译通过，未上板） |
 | 其他 | `service/imu_definition.hpp`（用户新建）、`device/dm_imu.*`（用户删除） | IMU 通用数据 `ImuData`；BMI088 按 `DjiMotor` 的写法把它存在对象里（`data()` / `raw_data()` / `temperature()`） |
 | 文档 | `README.md`、`templates/board_cfg.cpp`、`docs/bsp_test/` | 1.1 节加 SPI 要求；模块表 / 目录树加 `bsp_spi`、`device_bmi088`、`imu_definition`，删 `dm_imu`；新增 3.7 节（SPI / BMI088 实机测试）；模板加注释掉的 SPI / BMI088 示例；同步 `docs/bsp_test/` 副本 |
@@ -132,6 +133,8 @@ USER CODE 段、链接脚本、`FreeRTOSConfig.h`、`freertos.c` 未受影响；
 - `app/board_cfg.*`：`bsp_spi2`（`.dma_buffer`）、两个片选设备、`imu_bmi088`，`board_init()` 各一行断言；`HAL_GPIO_EXTI_Callback` 转调 BMI088 数据就绪（PE10 / PE12）。
 - `app/board_cfg.cpp`：`imu_bmi088` 加速度计量程第 6 轮起改为 ±24 g（L-BMI1）。
 - `app/test/test_spi_imu.cpp`（新增）：H / S / I / P01~P05 自动用例、P06 人工晃动对比；加热监视任务；诊断记录（每秒时间线、静止时孤立不合理帧、接口失败）。
+  L-BMI2 之后改为跟着库的自动刷新走（I06 / P01 / P02 / P05 / P06 等 `UPDATED_BIT` 读 `snapshot()`，临时对象传 `auto_update = false`，S03 / S05 的轮询计数改为下限判断）；只编译验证，未重跑。
+- `Core/Inc/hardware_config.h`：加 SPI、BMI088 两段注释掉的配置项。
 - `app/test/bsp_test.*`、根 `CMakeLists.txt`（加测试源文件）。
 - `app/app_test.hpp`：新增 `BSP_TEST_SUITE_SPI_IMU`、`BSP_TEST_SPI_STRESS_SECONDS`、`BSP_TEST_SPI_STRESS_ONLY`；测完已恢复 `APP_BSP_TEST_ENABLED 0`、`BSP_TEST_SOAK_MINUTES 0`，
   UART / RS485 / CAN 组开关恢复为 1。正常固件 Debug / RelWithDebInfo 编译 0 warning。

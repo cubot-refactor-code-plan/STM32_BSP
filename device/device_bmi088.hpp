@@ -9,23 +9,25 @@
  *
  * @details BMI088 是两颗独立的芯片：加速度计与陀螺仪各有片选、各有寄存器表，挂在同一条 SPI 总线上。
  *          本类绑定两个 BspSpiDevice（不拥有），负责上电配置、读数换算与数据就绪中断计数。
- *          与 DjiMotor 一样，读数存在对象内部：update() 刷新，data() 取 IMU 通用数据 ImuData
- *          （imu_definition.hpp，只填 gyro / acc），raw_data() 取寄存器原始值，temperature() 取芯片温度。
+ *          与 DjiMotor 一样，读数存在对象内部并由库自动刷新：Config::auto_update = true（默认）时，init() 建一个内部任务，
+ *          每次陀螺仪数据就绪就 update() 一次；用户直接读 snapshot() / data()（IMU 通用数据 ImuData，imu_definition.hpp，只填 gyro / acc）、
+ *          raw_data()（寄存器原始值）、temperature()（芯片温度）。
  *          姿态解算、零偏标定、温控不在这里（属于 Module 层）。
  *
- * @note 用法：
+ * @note 用法（自动刷新，默认）：
  *
  *   // 1) 两个片选设备（见 bsp_spi.hpp）；加速度计读寄存器时地址后有 1 个无效字节
  *   BspSpiDevice bmi088_acc_spi(bsp_spi2, {GYRO_ACC_CS_GPIO_Port, GYRO_ACC_CS_Pin, 0x80U, 1U});
  *   BspSpiDevice bmi088_gyro_spi(bsp_spi2, {GYRO_GYRO_CS_GPIO_Port, GYRO_GYRO_CS_Pin, 0x80U, 0U});
  *
- *   // 2) 设备实例：{加速度计量程, 陀螺仪量程, 加速度计 ODR, 陀螺仪 ODR / 带宽, 是否开数据就绪中断}
+ *   // 2) 设备实例：{加速度计量程, 陀螺仪量程, 加速度计 ODR, 陀螺仪 ODR / 带宽, 是否开数据就绪中断, 是否自动刷新}
  *   DeviceBmi088 imu_bmi088(bmi088_acc_spi, bmi088_gyro_spi, {DeviceBmi088::AccRange::G24, DeviceBmi088::GyroRange::DPS2000});
  *
- *   // 3) 初始化阶段，SPI 总线与两个片选设备之后
+ *   // 3) 初始化阶段，SPI 总线与两个片选设备之后（自动刷新任务在这里创建，调度器启动、system_start() 之后开始刷新）
  *   configASSERT(imu_bmi088.init() == Status::OK);
  *
- *   // 4) 数据就绪中断（可选）：库不占用 HAL_GPIO_EXTI_Callback（宿主的按键等也用 EXTI），由宿主转调
+ *   // 4) 数据就绪中断：库不占用 HAL_GPIO_EXTI_Callback（宿主的按键等也用 EXTI），由宿主转调。
+ *   //    没转调时自动刷新任务退化为每 10 ms 刷新一次（默认陀螺仪 1000 Hz，即每 1 ms 刷新一帧）
  *   extern "C" void HAL_GPIO_EXTI_Callback(uint16_t pin)
  *   {
  *     BaseType_t woken = pdFALSE;
@@ -34,15 +36,20 @@
  *     portYIELD_FROM_ISR(woken);
  *   }
  *
- *   // 5) 刷新读数（任务上下文）：周期刷新，或 attach_task() 后等通知再刷新
- *   imu_bmi088.attach_task(xTaskGetCurrentTaskHandle());
- *   uint32_t bits = 0U;
- *   xTaskNotifyWait(0U, DeviceBmi088::GYRO_DRDY_BIT, &bits, portMAX_DELAY);
- *   imu_bmi088.update();
+ *   // 5) 取数据（任意任务）：snapshot() 拷一份同一帧的数据
+ *   ImuData d;
+ *   imu_bmi088.snapshot(d);             // d.gyro.yaw / pitch / roll rad/s，d.acc.x / y / z m/s²
+ *   float t = imu_bmi088.temperature(); // °C
  *
- *   // 6) 取数据
- *   const ImuData &d = imu_bmi088.data(); // d.gyro.yaw / pitch / roll rad/s，d.acc.x / y / z m/s²
- *   float t = imu_bmi088.temperature();   // °C
+ *   // 6) 想跟着数据节奏走（例如姿态解算）：attach_task() 后，每刷新一次就收到 UPDATED_BIT
+ *   imu_bmi088.attach_task(xTaskGetCurrentTaskHandle());
+ *   xTaskNotifyWait(0U, DeviceBmi088::UPDATED_BIT, nullptr, portMAX_DELAY);
+ *
+ * @note 手动刷新：Config::auto_update = false 时不建任务，attach_task() 的任务在数据就绪中断里收到 ACC_DRDY_BIT / GYRO_DRDY_BIT，
+ *       由调用方自己 update()。临时对象（测试里切量程等）必须用手动模式。
+ * @note 自动刷新的负载：每次 update() 约 75 µs（-O2）~ 140 µs（-O0）；默认陀螺仪 1000 Hz（HZ1000_BW116）时约占 CPU 7.5%~14%，
+ *       改成 2000 Hz（HZ2000_BW230 / HZ2000_BW532）翻倍，嫌高可以再调低。任务优先级 / 栈深见 BMI088_TASK_PRIORITY / BMI088_TASK_STACK。
+ * @warning 自动刷新的对象 init() 成功后必须存活到系统停止（内部任务持有它的指针），和 DjiMotor 一样。
  *
  * @note 坐标轴为芯片本体坐标（数据手册 X / Y / Z），安装方向的旋转由上层处理：
  *       acc.x / y / z = 芯片 X / Y / Z；gyro.roll / pitch / yaw = 绕芯片 X / Y / Z 的角速度。
@@ -80,7 +87,7 @@ struct Bmi088RawData
 };
 
 
-/** @brief BMI088 设备类（不拥有 SPI 设备，也不创建 RTOS 资源） */
+/** @brief BMI088 设备类（不拥有 SPI 设备；自动刷新模式下 init() 创建一个内部任务） */
 class DeviceBmi088
 {
 public:
@@ -131,11 +138,11 @@ public:
     HZ100_BW32   = 0x07U, ///< 100 Hz，带宽 32 Hz
   };
 
-  /** @brief 设备配置（可匿名按序传入：{acc_range, gyro_range, acc_odr, gyro_odr, drdy_int}） */
+  /** @brief 设备配置（可匿名按序传入：{acc_range, gyro_range, acc_odr, gyro_odr, drdy_int, auto_update}） */
   struct Config
   {
     /** @brief 按序构造（参数顺序 = 字段顺序） */
-    Config(AccRange acc_range = AccRange::G24, GyroRange gyro_range = GyroRange::DPS2000, AccOdr acc_odr = AccOdr::HZ1600, GyroOdr gyro_odr = GyroOdr::HZ2000_BW230, bool drdy_int = true) : acc_range(acc_range), gyro_range(gyro_range), acc_odr(acc_odr), gyro_odr(gyro_odr), drdy_int(drdy_int)
+    Config(AccRange acc_range = AccRange::G24, GyroRange gyro_range = GyroRange::DPS2000, AccOdr acc_odr = AccOdr::HZ1600, GyroOdr gyro_odr = GyroOdr::HZ1000_BW116, bool drdy_int = true, bool auto_update = true) : acc_range(acc_range), gyro_range(gyro_range), acc_odr(acc_odr), gyro_odr(gyro_odr), drdy_int(drdy_int), auto_update(auto_update)
     {
     }
 
@@ -144,10 +151,12 @@ public:
     AccOdr    acc_odr;    ///< 加速度计输出数据率
     GyroOdr   gyro_odr;   ///< 陀螺仪输出数据率 / 带宽
     bool      drdy_int;   ///< true = 加速度计 INT1、陀螺仪 INT3 输出数据就绪（推挽、高有效、对应 EXTI 上升沿）
+    bool      auto_update;///< true = init() 建内部任务，每次陀螺仪数据就绪自动 update()（没有中断时每 10 ms 一次）；false = 调用方自己 update()
   };
 
-  static constexpr uint32_t ACC_DRDY_BIT  = 1UL << 0; ///< attach_task() 的任务通知位：加速度计数据就绪
-  static constexpr uint32_t GYRO_DRDY_BIT = 1UL << 1; ///< attach_task() 的任务通知位：陀螺仪数据就绪
+  static constexpr uint32_t ACC_DRDY_BIT  = 1UL << 0; ///< 手动模式下 attach_task() 的任务通知位：加速度计数据就绪
+  static constexpr uint32_t GYRO_DRDY_BIT = 1UL << 1; ///< 手动模式下 attach_task() 的任务通知位：陀螺仪数据就绪
+  static constexpr uint32_t UPDATED_BIT   = 1UL << 2; ///< 自动模式下 attach_task() 的任务通知位：内部任务刚刷新完一帧
 
   // ----------------
   // ---------------- 构造与初始化 ----------------
@@ -167,9 +176,10 @@ public:
    * @brief 上电配置：加速度计切到 SPI 模式（一次假读）→ 两颗软复位 → 校验芯片 ID
    *        → 加速度计上电 → 量程 / 数据率 → 数据就绪中断 → 回读校验
    *
-   * @note 在初始化阶段调用（SPI 总线与两个片选设备 init() 之后）；可以重复调用（重新复位、重新配置）。
+   * @note 在初始化阶段调用（SPI 总线与两个片选设备 init() 之后）；可以重复调用（重新复位、重新配置），
+   *       期间自动刷新任务跳过刷新。自动模式下第一次成功时创建内部任务（之后不再重复创建）。
    *
-   * @return OK=成功；NOT_INIT=SPI 设备未 init；IO_ERROR=芯片 ID 不对（没焊 / 接错 / 片选接反）或配置回读不一致；
+   * @return OK=成功；NOT_INIT=SPI 设备未 init；IO_ERROR=芯片 ID 不对（没焊 / 接错 / 片选接反）、配置回读不一致或刷新任务创建失败；
    *         TIMEOUT=SPI 传输超时
    */
   Status init();
@@ -184,13 +194,21 @@ public:
    * @return OK=已刷新；NOT_INIT=init() 没成功过；其余同 BspSpiDevice::read_reg()（失败时内部数据保持上一次的值）
    *
    * @note 只写 ImuData 的 gyro / acc；BMI088 不做姿态解算，欧拉角与四元数保持初始零值，不代表实际姿态。
+   * @note 自动模式下由内部任务调用，用户一般不用调；手动调用也安全（总线锁 + 临界区）。
    */
   Status update(uint32_t timeout_ms = SPI_TRANSFER_TIMEOUT_MS);
 
   /**
+   * @brief 拷贝一份同一帧的数据（临界区内拷贝，跨任务读用它）
+   * @param data 换算后的 IMU 通用数据
+   * @param raw  可选：同一帧的寄存器原始值；nullptr = 不要
+   */
+  void snapshot(ImuData &data, Bmi088RawData *raw = nullptr) const;
+
+  /**
    * @brief 获取只读 IMU 通用数据
    * @return 内部 ImuData 的常量引用。
-   * @warning 返回实时引用而非快照；调用方须保证读取期间不并发执行 update()。
+   * @warning 返回实时引用而非快照：自动刷新时多个字段可能来自相邻两帧；需要同一帧的数据用 snapshot()。
    */
   const ImuData &data() const
   {
@@ -228,19 +246,38 @@ public:
     return _gyro_sat_cnt;
   }
 
+  /** @brief update() 成功次数（自动 + 手动，只增不减）；自动模式下约等于陀螺仪数据就绪次数 */
+  uint32_t update_count() const
+  {
+    return _update_cnt;
+  }
+
+  /** @brief update() 失败次数（只增不减；重新 init 期间的 NOT_INIT 也算） */
+  uint32_t update_fail_count() const
+  {
+    return _update_fail_cnt;
+  }
+
+  /** @brief 最近一次 update() 的返回值 */
+  Status last_status() const
+  {
+    return _last_status;
+  }
+
   // ----------------
   // ---------------- 数据就绪中断 ----------------
 
   /**
-   * @brief 绑定一个任务：数据就绪中断里用 xTaskNotifyFromISR(eSetBits) 给它置 ACC_DRDY_BIT / GYRO_DRDY_BIT
-   * @param task 任务句柄；nullptr = 解绑，只计数
+   * @brief 绑定一个任务接收通知（eSetBits）
+   * @note 自动模式：内部任务每成功刷新一帧给它置 UPDATED_BIT；手动模式：数据就绪中断里给它置 ACC_DRDY_BIT / GYRO_DRDY_BIT。
+   * @param task 任务句柄；nullptr = 解绑
    */
   void attach_task(TaskHandle_t task);
 
-  /** @brief 加速度计数据就绪（INT1 上升沿，宿主 EXTI 回调里转调）：计数 + 通知绑定的任务 */
+  /** @brief 加速度计数据就绪（INT1 上升沿，宿主 EXTI 回调里转调）：计数；手动模式下通知绑定的任务 */
   void on_acc_drdy_isr(BaseType_t *pxHigherPriorityTaskWoken);
 
-  /** @brief 陀螺仪数据就绪（INT3 上升沿，宿主 EXTI 回调里转调）：计数 + 通知绑定的任务 */
+  /** @brief 陀螺仪数据就绪（INT3 上升沿，宿主 EXTI 回调里转调）：计数；自动模式下唤醒内部任务，手动模式下通知绑定的任务 */
   void on_gyro_drdy_isr(BaseType_t *pxHigherPriorityTaskWoken);
 
   /** @brief 加速度计数据就绪中断累计次数 */
@@ -267,8 +304,17 @@ private:
    */
   static Status write_verify(BspSpiDevice &dev, uint8_t reg, uint8_t value, uint8_t mask = 0xFFU);
 
-  /** @brief _raw_data 按当前量程换算到 _data / _temperature（纯计算） */
-  void convert();
+  /** @brief 原始值按当前量程换算（纯计算） */
+  void convert(const Bmi088RawData &raw, ImuData &data, float &temperature) const;
+
+  /** @brief update() 的读取与换算部分（计数在 update() 里） */
+  Status read_frame(uint32_t timeout_ms);
+
+  /** @brief 自动刷新任务入口（参数为 this） */
+  static void task_entry(void *argument);
+
+  /** @brief 自动刷新任务主循环：等陀螺仪数据就绪（最多 10 ms）→ update() → 通知绑定的任务 */
+  void run();
 
   BspSpiDevice &_acc;  ///< 加速度计片选设备
   BspSpiDevice &_gyro; ///< 陀螺仪片选设备
@@ -285,7 +331,12 @@ private:
   float _gyro_scale = 0.0f; ///< 原始值 → rad/s
   bool  _init       = false; ///< init() 是否成功过
 
-  TaskHandle_t volatile _notify_task   = nullptr; ///< 数据就绪时通知的任务
+  volatile uint32_t _update_cnt      = 0U;         ///< update() 成功次数
+  volatile uint32_t _update_fail_cnt = 0U;         ///< update() 失败次数
+  volatile Status   _last_status     = Status::OK; ///< 最近一次 update() 的结果
+
+  TaskHandle_t volatile _worker        = nullptr; ///< 自动刷新任务（auto_update 且 init() 成功后才有）
+  TaskHandle_t volatile _notify_task   = nullptr; ///< attach_task() 绑定的任务
   volatile uint32_t     _acc_drdy_cnt  = 0;       ///< INT1 次数
   volatile uint32_t     _gyro_drdy_cnt = 0;       ///< INT3 次数
 };

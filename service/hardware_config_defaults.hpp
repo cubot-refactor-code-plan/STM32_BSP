@@ -151,6 +151,18 @@
 #  define SPI_TRANSFER_TIMEOUT_MS 10
 #endif
 
+/* ==================== BMI088 ==================== */
+
+/** @brief DeviceBmi088 自动刷新任务的优先级：低于库的 sys / CAN 任务，高于一般业务任务 */
+#ifndef BMI088_TASK_PRIORITY
+#  define BMI088_TASK_PRIORITY (tskIDLE_PRIORITY + 6)
+#endif
+
+/** @brief DeviceBmi088 自动刷新任务栈深（字） */
+#ifndef BMI088_TASK_STACK
+#  define BMI088_TASK_STACK 256
+#endif
+
 /* ==================== 取值检查 ==================== */
 
 #ifdef __cplusplus
@@ -169,6 +181,7 @@ static_assert(UART_PRINTF_TIMEOUT_MS >= 1, "hardware_config.h: UART_PRINTF_TIMEO
 static_assert(SPI_MAX_INSTANCES >= 1 && SPI_MAX_INSTANCES <= 6, "hardware_config.h: SPI_MAX_INSTANCES 取 1~6（STM32H7 只有 SPI1~6）");
 static_assert(SPI_DMA_BUFFER_SIZE >= 16 && SPI_DMA_BUFFER_SIZE <= 65535, "hardware_config.h: SPI_DMA_BUFFER_SIZE 取 16~65535（单次 DMA 最多 65535 字节）");
 static_assert(SPI_TRANSFER_TIMEOUT_MS >= 1, "hardware_config.h: SPI_TRANSFER_TIMEOUT_MS 至少 1 ms");
+static_assert(BMI088_TASK_STACK >= 128, "hardware_config.h: BMI088_TASK_STACK 至少 128 字");
 #endif
 
 #endif // __HARDWARE_CONFIG_DEFAULTS_HPP__

@@ -44,4 +44,9 @@
 // #define SPI_DMA_BUFFER_SIZE        256                    /* 每个 BspSpi 的 DMA 弹跳缓冲（字节，收发各一份）；调用方缓冲在 DTCM 时经它中转、按它分段 */
 // #define SPI_TRANSFER_TIMEOUT_MS    10                     /* 传输接口默认超时：等总线锁、每段等 DMA 完成 */
 
+/* ==================== BMI088 ==================== */
+
+// #define BMI088_TASK_PRIORITY       (tskIDLE_PRIORITY + 6) /* DeviceBmi088 自动刷新任务：低于库的 sys / CAN 任务 */
+// #define BMI088_TASK_STACK          256                    /* 字 */
+
 #endif /* HARDWARE_CONFIG_H */

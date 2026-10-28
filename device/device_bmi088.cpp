@@ -187,6 +187,17 @@ Status DeviceBmi088::init()
   _gyro_scale = GYRO_FULL_SCALE_DPS[static_cast<uint8_t>(_cfg.gyro_range)] * (PI / 180.0f) / 32768.0f;
 
   _init = true;
+
+  // 8) 自动刷新：第一次成功时建内部任务（之后重复 init() 不再建）
+  if (_cfg.auto_update && _worker == nullptr)
+  {
+    TaskHandle_t worker = nullptr;
+    if (xTaskCreate(task_entry, "imu", BMI088_TASK_STACK, this, BMI088_TASK_PRIORITY, &worker) != pdPASS)
+    {
+      return Status::IO_ERROR;
+    }
+    _worker = worker;
+  }
   return Status::OK;
 }
 
@@ -196,6 +207,21 @@ Status DeviceBmi088::init()
 // ---------------- 读数 ----------------
 
 Status DeviceBmi088::update(uint32_t timeout_ms)
+{
+  const Status st = read_frame(timeout_ms);
+  if (st == Status::OK)
+  {
+    ++_update_cnt;
+  }
+  else
+  {
+    ++_update_fail_cnt;
+  }
+  _last_status = st;
+  return st;
+}
+
+Status DeviceBmi088::read_frame(uint32_t timeout_ms)
 {
   if (!_init)
   {
@@ -222,11 +248,12 @@ Status DeviceBmi088::update(uint32_t timeout_ms)
     return st;
   }
 
-  // 三组都读成功才更新，避免内部数据一半新一半旧
+  // 先在局部变量里拼好、换算好，三组都读成功才一次性写回，避免内部数据一半新一半旧
+  Bmi088RawData raw = {};
   for (uint32_t i = 0U; i < 3U; ++i)
   {
-    _raw_data.acc[i]  = static_cast<int16_t>(static_cast<uint16_t>(acc[2U * i]) | (static_cast<uint16_t>(acc[2U * i + 1U]) << 8));
-    _raw_data.gyro[i] = static_cast<int16_t>(static_cast<uint16_t>(gyro[2U * i]) | (static_cast<uint16_t>(gyro[2U * i + 1U]) << 8));
+    raw.acc[i]  = static_cast<int16_t>(static_cast<uint16_t>(acc[2U * i]) | (static_cast<uint16_t>(acc[2U * i + 1U]) << 8));
+    raw.gyro[i] = static_cast<int16_t>(static_cast<uint16_t>(gyro[2U * i]) | (static_cast<uint16_t>(gyro[2U * i + 1U]) << 8));
   }
   // 11 位补码：MSB 是高 8 位，LSB 的 [7:5] 是低 3 位
   int16_t t11 = static_cast<int16_t>((static_cast<uint16_t>(temp[0]) << 3) | (static_cast<uint16_t>(temp[1]) >> 5));
@@ -234,22 +261,32 @@ Status DeviceBmi088::update(uint32_t timeout_ms)
   {
     t11 = static_cast<int16_t>(t11 - 2048);
   }
-  _raw_data.temp = t11;
+  raw.temp = t11;
 
   // 饱和：ADC 顶到满量程，读数被截断（量程不够）
   uint8_t sat = 0U;
   for (uint32_t i = 0U; i < 3U; ++i)
   {
-    if (_raw_data.acc[i] == INT16_MAX || _raw_data.acc[i] == INT16_MIN)
+    if (raw.acc[i] == INT16_MAX || raw.acc[i] == INT16_MIN)
     {
       sat = static_cast<uint8_t>(sat | (1U << i));
     }
-    if (_raw_data.gyro[i] == INT16_MAX || _raw_data.gyro[i] == INT16_MIN)
+    if (raw.gyro[i] == INT16_MAX || raw.gyro[i] == INT16_MIN)
     {
       sat = static_cast<uint8_t>(sat | (1U << (3U + i)));
     }
   }
-  _raw_data.saturated = sat;
+  raw.saturated = sat;
+
+  ImuData data        = ImuData();
+  float   temperature = 0.0f;
+  convert(raw, data, temperature);
+
+  // 自动刷新任务与手动调用、snapshot() 可能并发：写回放在临界区里（几十字节拷贝）
+  taskENTER_CRITICAL();
+  _raw_data    = raw;
+  _data        = data;
+  _temperature = temperature;
   if ((sat & 0x07U) != 0U)
   {
     ++_acc_sat_cnt;
@@ -258,22 +295,65 @@ Status DeviceBmi088::update(uint32_t timeout_ms)
   {
     ++_gyro_sat_cnt;
   }
-
-  convert();
+  taskEXIT_CRITICAL();
   return Status::OK;
 }
 
-void DeviceBmi088::convert()
+void DeviceBmi088::snapshot(ImuData &data, Bmi088RawData *raw) const
 {
-  _data.acc.x = static_cast<float>(_raw_data.acc[0]) * _acc_scale;
-  _data.acc.y = static_cast<float>(_raw_data.acc[1]) * _acc_scale;
-  _data.acc.z = static_cast<float>(_raw_data.acc[2]) * _acc_scale;
+  taskENTER_CRITICAL();
+  data = _data;
+  if (raw != nullptr)
+  {
+    *raw = _raw_data;
+  }
+  taskEXIT_CRITICAL();
+}
 
-  _data.gyro.roll  = static_cast<float>(_raw_data.gyro[0]) * _gyro_scale;
-  _data.gyro.pitch = static_cast<float>(_raw_data.gyro[1]) * _gyro_scale;
-  _data.gyro.yaw   = static_cast<float>(_raw_data.gyro[2]) * _gyro_scale;
+void DeviceBmi088::convert(const Bmi088RawData &raw, ImuData &data, float &temperature) const
+{
+  data.acc.x = static_cast<float>(raw.acc[0]) * _acc_scale;
+  data.acc.y = static_cast<float>(raw.acc[1]) * _acc_scale;
+  data.acc.z = static_cast<float>(raw.acc[2]) * _acc_scale;
 
-  _temperature = static_cast<float>(_raw_data.temp) * 0.125f + 23.0f;
+  data.gyro.roll  = static_cast<float>(raw.gyro[0]) * _gyro_scale;
+  data.gyro.pitch = static_cast<float>(raw.gyro[1]) * _gyro_scale;
+  data.gyro.yaw   = static_cast<float>(raw.gyro[2]) * _gyro_scale;
+
+  temperature = static_cast<float>(raw.temp) * 0.125f + 23.0f;
+}
+
+// ----------------
+
+
+// ---------------- 自动刷新任务 ----------------
+
+void DeviceBmi088::task_entry(void *argument)
+{
+  static_cast<DeviceBmi088 *>(argument)->run();
+}
+
+void DeviceBmi088::run()
+{
+  SysFlagWaitRunning(); // 初始化期有失败时这里让任务自行退出
+
+  for (;;)
+  {
+    // 陀螺仪数据就绪中断唤醒；没有中断（没开 drdy_int、宿主没转调 EXTI）时最多等 10 ms 也刷新一次
+    (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10U));
+    if (!_init)
+    {
+      continue; // 正在重新 init()
+    }
+    if (update() == Status::OK)
+    {
+      TaskHandle_t task = _notify_task;
+      if (task != nullptr)
+      {
+        (void)xTaskNotify(task, UPDATED_BIT, eSetBits);
+      }
+    }
+  }
 }
 
 // ----------------
@@ -289,6 +369,10 @@ void DeviceBmi088::attach_task(TaskHandle_t task)
 void DeviceBmi088::on_acc_drdy_isr(BaseType_t *pxHigherPriorityTaskWoken)
 {
   ++_acc_drdy_cnt;
+  if (_worker != nullptr)
+  {
+    return; // 自动模式按陀螺仪节奏刷新，加速度计中断只计数
+  }
   TaskHandle_t task = _notify_task;
   if (task != nullptr)
   {
@@ -299,6 +383,12 @@ void DeviceBmi088::on_acc_drdy_isr(BaseType_t *pxHigherPriorityTaskWoken)
 void DeviceBmi088::on_gyro_drdy_isr(BaseType_t *pxHigherPriorityTaskWoken)
 {
   ++_gyro_drdy_cnt;
+  TaskHandle_t worker = _worker;
+  if (worker != nullptr)
+  {
+    vTaskNotifyGiveFromISR(worker, pxHigherPriorityTaskWoken);
+    return;
+  }
   TaskHandle_t task = _notify_task;
   if (task != nullptr)
   {
