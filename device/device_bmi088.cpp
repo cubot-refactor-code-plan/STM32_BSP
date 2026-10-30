@@ -5,6 +5,11 @@
 
 #include "device_bmi088.hpp"
 
+#include <math.h>
+#include <new>
+
+#include "vqf.hpp"
+
 
 // ---------------- 寄存器表（BMI088 数据手册 BST-BMI088-DS001） ----------------
 
@@ -43,6 +48,14 @@ constexpr float GRAVITY = 9.80665f; ///< 标准重力加速度 (m/s²)
 
 /** @brief 陀螺仪量程（°/s），下标 = GyroRange 枚举值 */
 constexpr float GYRO_FULL_SCALE_DPS[] = {2000.0f, 1000.0f, 500.0f, 250.0f, 125.0f};
+
+/** @brief 陀螺仪输出数据率（Hz），下标 = GyroOdr 枚举值；姿态解算按它的周期积分 */
+constexpr double GYRO_ODR_HZ[] = {2000.0, 2000.0, 1000.0, 400.0, 200.0, 100.0, 200.0, 100.0};
+
+/** @brief 一次刷新最多补积分的陀螺仪样本数：限住内部任务单次耗时，任务被长时间饿住后不一口气补几百次 */
+constexpr uint32_t ATTITUDE_MAX_GYRO_STEPS = 10U;
+
+constexpr double RAD_TO_DEG = 57.295779513082320876798; ///< 180 / π（imu_definition.hpp 的 PI 是 float，精度不够）
 } // namespace
 
 // ----------------
@@ -186,9 +199,26 @@ Status DeviceBmi088::init()
   _acc_scale  = 1.5f * static_cast<float>(1U << (static_cast<uint8_t>(_cfg.acc_range) + 1U)) * GRAVITY / 32768.0f;
   _gyro_scale = GYRO_FULL_SCALE_DPS[static_cast<uint8_t>(_cfg.gyro_range)] * (PI / 180.0f) / 32768.0f;
 
+  // 8) 姿态解算器（只有自动刷新任务用它）：第一次分配，之后重复 init() 时清空状态、从头解算
+  if (_cfg.auto_update && _cfg.attitude)
+  {
+    if (_vqf == nullptr)
+    {
+      _vqf = new (std::nothrow) VQF(1.0 / GYRO_ODR_HZ[static_cast<uint8_t>(_cfg.gyro_odr)]);
+      if (_vqf == nullptr)
+      {
+        return Status::IO_ERROR;
+      }
+    }
+    else
+    {
+      _vqf->resetState();
+    }
+  }
+
   _init = true;
 
-  // 8) 自动刷新：第一次成功时建内部任务（之后重复 init() 不再建）
+  // 9) 自动刷新：第一次成功时建内部任务（之后重复 init() 不再建）
   if (_cfg.auto_update && _worker == nullptr)
   {
     TaskHandle_t worker = nullptr;
@@ -208,7 +238,12 @@ Status DeviceBmi088::init()
 
 Status DeviceBmi088::update(uint32_t timeout_ms)
 {
-  const Status st = read_frame(timeout_ms);
+  return refresh(timeout_ms, 0U);
+}
+
+Status DeviceBmi088::refresh(uint32_t timeout_ms, uint32_t gyro_steps)
+{
+  const Status st = read_frame(timeout_ms, gyro_steps);
   if (st == Status::OK)
   {
     ++_update_cnt;
@@ -221,7 +256,7 @@ Status DeviceBmi088::update(uint32_t timeout_ms)
   return st;
 }
 
-Status DeviceBmi088::read_frame(uint32_t timeout_ms)
+Status DeviceBmi088::read_frame(uint32_t timeout_ms, uint32_t gyro_steps)
 {
   if (!_init)
   {
@@ -282,10 +317,27 @@ Status DeviceBmi088::read_frame(uint32_t timeout_ms)
   float   temperature = 0.0f;
   convert(raw, data, temperature);
 
-  // 自动刷新任务与手动调用、snapshot() 可能并发：写回放在临界区里（几十字节拷贝）
+  // 姿态也先算进局部变量，和读数一起写回，snapshot() 拿到的读数与姿态是同一帧
+  const bool attitude = (gyro_steps > 0U) && (_vqf != nullptr);
+  if (attitude)
+  {
+    solve_attitude(data, gyro_steps);
+  }
+
+  // 自动刷新任务与手动调用、snapshot() 可能并发：写回放在临界区里（一百多字节拷贝）
   taskENTER_CRITICAL();
-  _raw_data    = raw;
-  _data        = data;
+  _raw_data  = raw;
+  _data.gyro = data.gyro;
+  _data.acc  = data.acc;
+  if (attitude) // 不解算的帧保留上一次的姿态
+  {
+    _data.euler_angle  = data.euler_angle;
+    _data.euler_radian = data.euler_radian;
+    for (uint32_t i = 0U; i < 4U; ++i)
+    {
+      _data.quaternion[i] = data.quaternion[i];
+    }
+  }
   _temperature = temperature;
   if ((sat & 0x07U) != 0U)
   {
@@ -323,6 +375,49 @@ void DeviceBmi088::convert(const Bmi088RawData &raw, ImuData &data, float &tempe
   temperature = static_cast<float>(raw.temp) * 0.125f + 23.0f;
 }
 
+void DeviceBmi088::solve_attitude(ImuData &data, uint32_t gyro_steps)
+{
+  // 轴对应见文件头：gyro.roll / pitch / yaw = 绕芯片 X / Y / Z
+  const vqf_real_t gyr[3] = {static_cast<vqf_real_t>(data.gyro.roll), static_cast<vqf_real_t>(data.gyro.pitch), static_cast<vqf_real_t>(data.gyro.yaw)};
+  const vqf_real_t acc[3] = {static_cast<vqf_real_t>(data.acc.x), static_cast<vqf_real_t>(data.acc.y), static_cast<vqf_real_t>(data.acc.z)};
+
+  // 漏掉的样本没有读数，按本帧角速度补积分（VQF 每次 updateGyr() 固定积分一个 ODR 周期）
+  for (uint32_t i = 0U; i < gyro_steps; ++i)
+  {
+    _vqf->updateGyr(gyr);
+  }
+  _vqf->updateAcc(acc);
+
+  vqf_real_t q[4] = {};
+  _vqf->getQuat6D(q);
+  for (uint32_t i = 0U; i < 4U; ++i)
+  {
+    data.quaternion[i] = static_cast<double>(q[i]);
+  }
+
+  // Z-Y-X 欧拉角；pitch 在 ±90° 附近时 asin 的参数可能因舍入略超出 ±1，先限幅
+  const double w    = data.quaternion[0];
+  const double x    = data.quaternion[1];
+  const double y    = data.quaternion[2];
+  const double z    = data.quaternion[3];
+  double       sinp = 2.0 * (w * y - z * x);
+  if (sinp > 1.0)
+  {
+    sinp = 1.0;
+  }
+  else if (sinp < -1.0)
+  {
+    sinp = -1.0;
+  }
+  data.euler_radian.yaw   = atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z));
+  data.euler_radian.pitch = asin(sinp);
+  data.euler_radian.roll  = atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y));
+
+  data.euler_angle.yaw   = data.euler_radian.yaw * RAD_TO_DEG;
+  data.euler_angle.pitch = data.euler_radian.pitch * RAD_TO_DEG;
+  data.euler_angle.roll  = data.euler_radian.roll * RAD_TO_DEG;
+}
+
 // ----------------
 
 
@@ -337,15 +432,33 @@ void DeviceBmi088::run()
 {
   SysFlagWaitRunning(); // 初始化期有失败时这里让任务自行退出
 
+  // 丢掉等运行位期间攒下的数据就绪计数，否则第一帧会被当成漏了几百帧
+  (void)ulTaskNotifyTake(pdTRUE, 0U);
+
   for (;;)
   {
-    // 陀螺仪数据就绪中断唤醒；没有中断（没开 drdy_int、宿主没转调 EXTI）时最多等 10 ms 也刷新一次
-    (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10U));
+    // 陀螺仪数据就绪中断唤醒，返回值 = 上次以来的数据就绪次数；没有中断（没开 drdy_int、宿主没转调 EXTI）时最多等 10 ms 也刷新一次
+    const uint32_t drdy = ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10U));
     if (!_init)
     {
       continue; // 正在重新 init()
     }
-    if (update() == Status::OK)
+
+    // 姿态按陀螺仪样本周期积分：只在数据就绪唤醒时解算；超时唤醒不知道过了几个样本，只刷新读数
+    uint32_t steps = 0U;
+    if (_vqf != nullptr && drdy > 0U)
+    {
+      steps = drdy;
+      if (steps > 1U)
+      {
+        _attitude_skip_cnt = _attitude_skip_cnt + (steps - 1U);
+      }
+      if (steps > ATTITUDE_MAX_GYRO_STEPS)
+      {
+        steps = ATTITUDE_MAX_GYRO_STEPS;
+      }
+    }
+    if (refresh(SPI_TRANSFER_TIMEOUT_MS, steps) == Status::OK)
     {
       TaskHandle_t task = _notify_task;
       if (task != nullptr)

@@ -158,9 +158,9 @@
 #  define BMI088_TASK_PRIORITY (tskIDLE_PRIORITY + 6)
 #endif
 
-/** @brief DeviceBmi088 自动刷新任务栈深（字） */
+/** @brief DeviceBmi088 自动刷新任务栈深（字）：含 VQF 姿态解算，-O0 下调用链约 1.1 KB + 浮点上下文 */
 #ifndef BMI088_TASK_STACK
-#  define BMI088_TASK_STACK 256
+#  define BMI088_TASK_STACK 512
 #endif
 
 /* ==================== 取值检查 ==================== */

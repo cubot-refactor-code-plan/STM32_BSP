@@ -47,6 +47,6 @@
 /* ==================== BMI088 ==================== */
 
 // #define BMI088_TASK_PRIORITY       (tskIDLE_PRIORITY + 6) /* DeviceBmi088 自动刷新任务：低于库的 sys / CAN 任务 */
-// #define BMI088_TASK_STACK          256                    /* 字 */
+// #define BMI088_TASK_STACK          512                    /* 字（含 VQF 姿态解算；关掉 Config::attitude 时 256 够用） */
 
 #endif /* HARDWARE_CONFIG_H */

@@ -44,7 +44,7 @@ DeviceBuzzer buzzer(bsp_pwm_buzzer);
 /*
  * 板载 BMI088（需要上面的两个片选设备；board_cfg.hpp 里加 #include "device_bmi088.hpp"）：
  *     DeviceBmi088 imu_bmi088(bmi088_acc_spi, bmi088_gyro_spi, {DeviceBmi088::AccRange::G24, DeviceBmi088::GyroRange::DPS2000});
- *   数据由库的内部任务自动刷新（默认 auto_update = true），业务里用 imu_bmi088.snapshot(d) 读；
+ *   数据由库的内部任务自动刷新（默认 auto_update = true，含 VQF 姿态解算 attitude = true），业务里用 imu_bmi088.snapshot(d) 读；
  *   board_init() 里片选设备之后：configASSERT(imu_bmi088.init() == Status::OK);
  *   数据就绪中断由宿主的 HAL_GPIO_EXTI_Callback 转调 imu_bmi088.on_acc_drdy_isr() / on_gyro_drdy_isr()。
  */

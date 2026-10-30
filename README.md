@@ -1,5 +1,5 @@
 # STM32_BSP：可作为 git submodule 接入的 STM32H7 板级库
-![GitHub Release](https://img.shields.io/github/v/release/cubot-refactor-code-plan/STM32_BSP)  
+![GitHub Release](https://img.shields.io/github/v/release/cubot-refactor-code-plan/STM32_BSP)[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ![](https://img.shields.io/badge/chip-STM32H7xx-blue.svg) ![](https://img.shields.io/badge/RTOS-FreeRTOS_CMSIS_V2-green.svg) ![](https://img.shields.io/badge/language-C/C++-blue.svg) ![](https://img.shields.io/badge/ToolChain-CMake_v3.22.1-blue.svg) 
 
 > 分支 `mini-bsp`。目标：从 DM-MC02 整车工程里提炼出一个库，**任何 STM32H7 CubeMX 工程**都能把它作为 git submodule 接入。
@@ -187,8 +187,9 @@ extern "C" void chassis_task(void *)
 | Service | `online_check`、`motor_definition`、`imu_definition` | 在线计时、电机通用数据、IMU 通用数据 | 编译通过（`imu_definition` 经 BMI088 实测） |
 | Device | `dji_motor` | M3508 / M2006 / GM6020，每电机一个对象 | C620 + M3508 实测（2026-09-01 / 10-01，当时版本；本轮改动后未接电机复测） |
 | Device | `device_buzzer` | 无源蜂鸣器（音调 / 音量 / 时长） | 实测 |
-| Device | `device_bmi088` | BMI088 六轴 IMU（SPI）：上电配置与回读校验、读数换算到 `ImuData`；默认由内部任务按陀螺仪数据就绪自动刷新（默认 1 kHz），`snapshot()` 取同一帧；饱和标志 / 计数；不驱动加热电阻 | DM-MC02 板载 BMI088 实测（2026-10-28，3.7） |
-| Algorithm | `pid` | 位置式 PID | 未测 |
+| Device | `device_bmi088` | BMI088 六轴 IMU（SPI）：上电配置与回读校验、读数换算到 `ImuData`；默认由内部任务按陀螺仪数据就绪自动刷新（默认 1 kHz），并用 VQF 解算姿态（四元数 / 欧拉角）；`snapshot()` 取同一帧；饱和标志 / 计数；不驱动加热电阻 | DM-MC02 板载 BMI088 实测（2026-10-28，3.7）；VQF 姿态只编译验证 |
+| Algorithm | `pid` | 位置式 PID | 已测 |
+| Algorithm | `vqf` | [VQF开源页面](https://github.com/dlaidig/vqf), MIT License |  |
 | Service | `system` / `hardware_config_defaults` | 库入口 `system_init()` / `system_start()` 与库任务 `sys_task`、`can_rx_task`、`can_tx_task`（遍历 `BspCan` / `BspUartBase` 登记表）；可配置项默认值与 `hardware_config.h` 读取 | 内部回环 + 串口跳线回归，默认 / 覆盖配置对比（2026-10-17） |
 
 属于示例板的代码在 `examples/dm_mc02/app/`：`board/bsp_cfg.*`、`board/device_cfg.*`（实例与初始化，包含本板 CubeMX 头文件）、`api_main`（`all_init()` 按上面的顺序调库入口）、`task/key_task`、`test/`。
@@ -224,31 +225,8 @@ stm32_bsp/                    仓库根 = 库
 - 代价：用户克隆 submodule 时会带上示例的 HAL / FreeRTOS（数十 MB），git 无法排除。
 - 烧录脚本与 VS Code 调试配置按 CMake 工程名（`CMAKE_PROJECT_NAME`）找 ELF，不再依赖目录名。
 
-### 3.2 去板级耦合（阶段 C）
 
-原来与 DM-MC02 绑定的地方及改法（2026-10-17 完成）：
-
-| 原状 | 现在 |
-| --- | --- |
-| `bsp_can.cpp` / `bsp_uart.cpp` 的 HAL 回调按句柄 if-else 分发给写死的 `bsp_can1..3`、`bsp_uart1..10` | 实例在 `init()` 时（打开中断前）登记到静态表：`BspCan` 最多 3 个，`BspUartBase`（`BspUart<N>` 的非模板基类，虚函数提供中断 / 巡检入口）最多 12 个；回调按句柄查表，查不到的外设忽略；同一句柄重复登记返回 `BAD_ARG`，表满返回 `FULL` |
-| 驱动头文件包含 CubeMX 按外设生成的 `fdcan.h` / `usart.h` / `tim.h` / `main.h`（没开该外设就不存在） | 只包含 `stm32h7xx_hal.h`；按 `HAL_FDCAN_MODULE_ENABLED`、`HAL_UART_MODULE_ENABLED`、`HAL_TIM_MODULE_ENABLED` 条件编译各驱动及依赖它们的节点层、设备与任务 |
-| 实例与初始化写在库里（`bsp_cfg.cpp`、`device_cfg.cpp`） | 阶段 B 已移到示例工程 `app/board/`；阶段 C 去掉库对它的引用（原来的板级目录 CMake 变量）；阶段 D 提供模板 `templates/board_cfg.*` |
-| 库的后台任务（CAN 收 / 发分发、系统巡检：Bus-Off 恢复、串口补救、在线计时）由 `api_main` 创建，并直接遍历板级实例 | 移入 `service/`（`sys_task`、`can_rx_task`、`can_tx_task`），遍历登记表；由库入口 `system_init()` 创建，优先级 / 栈深在 `hardware_config.h` 里配置 |
-| 库占用 HAL 回调 `HAL_FDCAN_RxFifo0Callback`、`HAL_FDCAN_TxFifoEmptyCallback`、`HAL_UARTEx_RxEventCallback`、`HAL_UART_TxCpltCallback`、`HAL_UART_ErrorCallback` | 保留由库定义（只在对应 HAL 模块打开时编译）；宿主工程不能再定义同名回调，非库管理的句柄在回调里被忽略；需要时再提供用户钩子 |
-
-验证（2026-10-17）：示例固件每步编译 0 warning、烧录、挂接检查运行位 / 任务数 / CFSR；FDCAN1 内部回环 + UART7→USART10 跳线的回归测试（CAN 控制帧经登记表分发、指令有效期；串口 8 字节记录收发、溢出 / 硬件停流 / 丢 TX 完成中断三种注入后的恢复）在阶段 C 前后结果一致；库单独编译矩阵（FDCAN / UART / TIM 各关、全关）均 0 warning，全关时库内没有 CAN / UART / PWM 符号、未解析符号只剩 libc / libm / libstdc++。尚未做：没开这些外设的**真实** CubeMX 工程完整链接与运行（阶段 E）。
-
-### 3.3 配置化（阶段 D）
-
-2026-10-17 完成：
-
-- **配置**：宿主工程可选的 `hardware_config.h`（用法与全部配置项见 1.3 第 6 条），库内 `service/hardware_config_defaults.hpp` 给默认值并检查范围；原来写死在库里的常量（任务优先级 / 栈深、登记表容量、队列深度、节点上限、指令有效期、心跳、Bus-Off 重试、巡检周期、printf 等待）全部改为读它，默认值与原来一致。
-- **接入检查**：CMake 配置阶段查链接脚本的 `.dma_buffer` / `.noinit`；`BspUart::init()` 拒绝 DMA 访问不到的实例（1.3 第 1 条）。
-- **模板**：`templates/`（索引 `templates/README.md`）。示例工程的 `Core/Inc/hardware_config.h` 全部默认，示范放置位置。
-
-验证：scratch 里 CAN 内部回环 + 串口跳线，同一测试分别用默认与覆盖配置上板——任务优先级、回退队列容量、指令有效期（101 → 301 ms）、心跳（200 → 50 帧/s）、串口巡检重建延迟（≤ 10 → ≤ 48 ms）、堆用量变化都与配置相符，应用代码看到同一份配置；收节点上限设 1 时 `system_start()` 断言停机；越界取值编译报错。链接脚本检查：手删段配置报错、配置后再删段普通构建自动重查报错、CubeMX 重新生成后检查通过。串口实例放进 DTCM：加检查前系统照常运行但收不到数据（DMA 传输错误，巡检无休止重建），加检查后开机在该实例 `init()` 那行停机。模板：删掉示例的 `app/` 换成模板与片段，按 1.2 接入，编译 0 warning，上板运行。
-
-### 3.4 约束与限制
+### 3.2 约束与限制
 
 - 只支持 STM32H7（FDCAN、DMA Stream、RAM_D1）。
 - 假定 **D-Cache 关闭**；开启时 `.dma_buffer` 要配成 MPU 非缓存区。
@@ -266,20 +244,12 @@ stm32_bsp/                    仓库根 = 库
   `acc_saturation_count()` / `gyro_saturation_count()` 给出。不驱动板上的加热电阻（DM-MC02 上是 PB1 / TIM3_CH4，误开容易损坏硬件），温控属于上层。
   数据就绪中断由宿主的 `HAL_GPIO_EXTI_Callback` 转调（库不占用它）。默认 `Config::auto_update = true`：`init()` 建内部任务 "imu"（`BMI088_TASK_PRIORITY` / `BMI088_TASK_STACK`），
   每次陀螺仪数据就绪刷新一帧（没有中断时每 10 ms）；默认陀螺仪 1000 Hz（`HZ1000_BW116`），约占 CPU 7.5%~14%，改 2000 Hz 翻倍；自动刷新的对象必须存活到系统停止，临时对象用 `auto_update = false`。
+  默认 `Config::attitude = true`：内部任务每帧用 VQF（`algorithm/vqf.*`，dlaidig/vqf，MIT，见 `LICENSES/MIT.txt`，版权在文件头 SPDX 行）做六轴姿态解算，写 `ImuData` 的四元数 / 欧拉角（Z-Y-X，芯片本体坐标，yaw 零点任意、无磁力计会慢漂）；
+  按陀螺仪 ODR 周期积分，所以只在数据就绪中断唤醒的帧上解算（没转调 EXTI 时姿态不更新），漏帧按最新一帧补积分并计入 `attitude_skip_count()`；手动模式不解算。任务栈默认 512 字。
 - HAL V1.11.6 `HAL_DMA_Abort()` 读-改-写竞争（3.6）：HAL 时基优先级须高于串口中断；即使这样，-O2 构建下偶有 5 ms 中断内等待与少量丢数，根治（接收改 DMA 循环模式）待做。
 - 运行期可恢复的失败返回 `Status`，初始化失败一律 `configASSERT` 停机并写 `fault_record`（见 `docs/编码规范.md` 第 8 节）。
 
-### 3.5 分阶段实施
-
-| 阶段 | 内容 | 状态 |
-| --- | --- | --- |
-| A | 删减，与 main 对齐（见第 2 节） | ✅ 2026-10-16，每项编译 / 烧录 / 挂接检查 |
-| B | 目录搬迁：CubeMX 工程 `git mv` 到 `examples/dm_mc02`，`User/` 拆成库目录，板级代码进示例，烧录脚本改用 CMake 工程名 | ✅ 2026-10-17，编译 / 烧录 / 挂接检查，CubeMX 重新生成检查 |
-| C | 去板级耦合（3.2）：实例登记表、库任务与 `system_init()` / `system_start()` 入口、只依赖 HAL 头并按模块条件编译 | ✅ 2026-10-17，每步编译 / 烧录 / 挂接检查，回环回归测试，库编译矩阵 |
-| D | 配置化（3.3）：`hardware_config.h` + 默认值与范围检查、接入检查（链接脚本段、串口实例内存位置）、`templates/` | ✅ 2026-10-17，每步编译 / 烧录 / 挂接检查，默认 / 覆盖配置上板对比，模板替换示例 app 上板 |
-| E | 验证：示例工程实机回归；再用一个全新 CubeMX 工程按第 1 节从零接入，证明可移植 | 部分完成（2026-10-17、10-28）：全新 CubeMX 工程 `MC02_with_submodule` 按第 1 节接入，UART / RS485 / CAN 实机测试并修复库问题（3.6）；新增 SPI / BMI088 并实机测试（3.7）；示例工程只用改后的库编译通过，**未上板回归** |
-
-### 3.6 实机测试（2026-10-17）
+### 3.3 实机测试（2026-10-17）
 
 在宿主工程 `MC02_with_submodule`（DM-MC02，全新 CubeMX 工程按第 1 节接入）上对 UART（U7 ⇄ U10）、RS485（U2 ⇄ U3，硬件 DE）、CAN（CAN1 ⇄ CAN2，无终端电阻）
 做了常规、边界、满载、故障注入、浸泡与物理插拔测试，Debug（-O0）与 -O2 各跑。完整记录（用例 / 目的 / 方案 / 现象 / 结论、原始数据、改动清单）在 **`docs/bsp_test/`**（宿主工程同名目录的副本）。
@@ -312,7 +282,7 @@ stm32_bsp/                    仓库根 = 库
   宿主工程已把时基优先级改为 4 缓解（见 1.1），-O2 浸泡 16 min 不再卡死，但命中时仍有 5 ms 等待与少量丢数（0.04%）。根治：接收改 DMA 循环模式（待做）。
 - 总线被更高优先级流量占满时，本节点的周期帧占满 TX 缓冲，高优先级帧也进不去（设计层面，未改）。
 
-### 3.7 SPI / BMI088 实机测试（2026-10-27 ~ 10-28）
+### 3.4 SPI / BMI088 实机测试（2026-10-27 ~ 10-28）
 
 在宿主工程 `MC02_with_submodule` 上测试新增的 `bsp_spi`（`BspSpi` / `BspSpiDevice`）与 `device_bmi088`（输出 `imu_definition` 的 `ImuData`），板载 BMI088 挂在 SPI2 上
 （RX / TX DMA、SPI 中断、`MasterKeepIOState = ENABLE`）。完整记录在 **`docs/bsp_test/spi_bmi088.md`**，改动清单在 `docs/bsp_test/changes.md` 第 6、7 节。全程未打开加热电阻。
