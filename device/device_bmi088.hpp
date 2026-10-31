@@ -57,6 +57,7 @@
  * @note 姿态（Config::attitude）：
  *       - 坐标系：VQF 的六轴姿态，参考系 z 轴竖直向上、航向（yaw 零点）为上电时任意值；没有磁力计，yaw 会随零偏估计残差慢慢漂。
  *         quaternion 为“芯片本体 → 参考系”的旋转（w / x / y / z），欧拉角按 Z-Y-X（yaw → pitch → roll）分解，与 gyro.yaw / pitch / roll 同轴。
+ *         注意 pitch 是绕芯片 Y 轴的右手转角：芯片 X 轴朝上抬时为负。pitch = ±90° 处 yaw / roll 万向节锁，控制请用四元数（algorithm/quaternion.hpp）。
  *       - 节奏：VQF 按陀螺仪 ODR 的周期积分，所以只在陀螺仪数据就绪中断唤醒的那一帧解算；没有中断（没开 drdy_int、宿主没转调 EXTI）
  *         时内部任务每 10 ms 超时刷新一次读数，但姿态不更新。两次刷新之间漏掉的数据就绪按最新一帧补积分，漏帧数见 attitude_skip_count()。
  *       - 收敛：上电后倾角约在 tauAcc（3 s）量级内收敛；陀螺仪零偏在静止约 1.5 s 后开始快速估计，静止上电最稳。

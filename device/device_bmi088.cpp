@@ -5,9 +5,9 @@
 
 #include "device_bmi088.hpp"
 
-#include <math.h>
 #include <new>
 
+#include "quaternion.hpp"
 #include "vqf.hpp"
 
 
@@ -55,7 +55,7 @@ constexpr double GYRO_ODR_HZ[] = {2000.0, 2000.0, 1000.0, 400.0, 200.0, 100.0, 2
 /** @brief 一次刷新最多补积分的陀螺仪样本数：限住内部任务单次耗时，任务被长时间饿住后不一口气补几百次 */
 constexpr uint32_t ATTITUDE_MAX_GYRO_STEPS = 10U;
 
-constexpr double RAD_TO_DEG = 57.295779513082320876798; ///< 180 / π（imu_definition.hpp 的 PI 是 float，精度不够）
+constexpr double RAD_TO_DEG = 180.0 / PI_D; ///< imu_definition.hpp 的 PI 是 float，精度不够
 } // namespace
 
 // ----------------
@@ -395,23 +395,8 @@ void DeviceBmi088::solve_attitude(ImuData &data, uint32_t gyro_steps)
     data.quaternion[i] = static_cast<double>(q[i]);
   }
 
-  // Z-Y-X 欧拉角；pitch 在 ±90° 附近时 asin 的参数可能因舍入略超出 ±1，先限幅
-  const double w    = data.quaternion[0];
-  const double x    = data.quaternion[1];
-  const double y    = data.quaternion[2];
-  const double z    = data.quaternion[3];
-  double       sinp = 2.0 * (w * y - z * x);
-  if (sinp > 1.0)
-  {
-    sinp = 1.0;
-  }
-  else if (sinp < -1.0)
-  {
-    sinp = -1.0;
-  }
-  data.euler_radian.yaw   = atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z));
-  data.euler_radian.pitch = asin(sinp);
-  data.euler_radian.roll  = atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y));
+  // Z-Y-X 欧拉角（pitch = ±90° 处万向节锁，见 quaternion.hpp；控制用四元数）
+  Quaternion::from_array(data.quaternion).to_euler_zyx(data.euler_radian.yaw, data.euler_radian.pitch, data.euler_radian.roll);
 
   data.euler_angle.yaw   = data.euler_radian.yaw * RAD_TO_DEG;
   data.euler_angle.pitch = data.euler_radian.pitch * RAD_TO_DEG;
