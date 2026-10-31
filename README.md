@@ -190,6 +190,8 @@ extern "C" void chassis_task(void *)
 | Device | `device_bmi088` | BMI088 六轴 IMU（SPI）：上电配置与回读校验、读数换算到 `ImuData`；默认由内部任务按陀螺仪数据就绪自动刷新（默认 1 kHz），并用 VQF 解算姿态（四元数 / 欧拉角）；`snapshot()` 取同一帧；饱和标志 / 计数；不驱动加热电阻 | DM-MC02 板载 BMI088 实测（2026-10-28，3.7）；VQF 姿态只编译验证 |
 | Algorithm | `pid` | 位置式 PID | 已测 |
 | Algorithm | `vqf` | [VQF开源页面](https://github.com/dlaidig/vqf), MIT License |  |
+| Algorithm | `matrix` | 定长单精度矩阵 `MatrixF32<ROWS, COLS>`：四则运算、转置、求逆（奇异时返回 false，相对阈值）、向量模长 / 归一化 / 点乘 / 叉乘、轴角 / Z-Y-X 欧拉角旋转矩阵。移植自 [yssickjgd/damiao_mc02_bsp](https://github.com/yssickjgd/damiao_mc02_bsp)（USTC-RoboWalker，经作者授权），**不适用本库的 MIT 许可证**；改动见文件头 | 主机侧与原作逐项对照（5000 组随机输入）、修复项与误用编译报错检查 |
+| Algorithm | `rls` | 带遗忘因子的递归最小二乘 `Rls<X_DIM, Y_DIM>`（多输出共用回归向量）：参数检查、tr(P) 上限防协方差爆炸、非有限样本丢弃、P 对称化与失正定重置，均计数 | 主机侧与双精度参考实现对照、静态辨识 / 参数突变跟踪 / 零激励 10 万步 / 单方向激励 / 100 万步长跑 |
 | Algorithm | `quaternion` | 姿态四元数运算：乘法 / 共轭、旋转向量、姿态误差（`error_to()`，无奇异点）、角速度积分、slerp、云台指向角（`pointing()`）、Z-Y-X 欧拉角、角度折回 | 主机侧数值自测（与参考公式、VQF 输出对照）, 暂未实测 |
 | Service | `system` / `hardware_config_defaults` | 库入口 `system_init()` / `system_start()` 与库任务 `sys_task`、`can_rx_task`、`can_tx_task`（遍历 `BspCan` / `BspUartBase` 登记表）；可配置项默认值与 `hardware_config.h` 读取 | 内部回环 + 串口跳线回归，默认 / 覆盖配置对比（2026-10-17） |
 
@@ -209,7 +211,7 @@ stm32_bsp/                    仓库根 = 库
 ├─ bsp/                       bsp_can（含 bsp_can_recovery）、bsp_uart、bsp_spi、bsp_pwm、bsp_key、bsp_gpio
 ├─ service/                   system（库入口）与库任务 sys_task / can_rx_task / can_tx_task、hardware_config_defaults、status、fault_record、can_rx_node / can_tx_node、online_check、motor_definition、imu_definition
 ├─ device/                    dji_motor、device_buzzer、device_bmi088
-├─ algorithm/                 pid、vqf（姿态解算）、quaternion
+├─ algorithm/                 pid、vqf（姿态解算）、quaternion、matrix、rls
 ├─ templates/                 接入用：hardware_config.h、board_cfg.*、app_main.*、user/（业务任务初始化与示例业务）、FreeRTOSConfig.h / freertos.c USER CODE 片段、链接脚本片段
 ├─ tools/                     integrate.py：按 templates/ 自动接入宿主工程（1.2）
 ├─ docs/                      编码规范、器件手册、bsp_test/（UART / RS485 / CAN 实机测试记录 3.6，SPI / BMI088 3.7）
